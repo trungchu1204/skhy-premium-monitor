@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SKHY Pair Trader</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:#0b0f14;color:#eef4fa}.wrap{max-width:1050px;margin:auto;padding:22px}
+h1{font-size:25px;margin:0 0 5px}.sub{color:#9cb0c2;font-size:13px;line-height:1.5}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px 0}.card{background:#121923;border:1px solid #263646;border-radius:14px;padding:15px}
+.label{font-size:12px;color:#8ea5b8}.value{font-size:24px;font-weight:750;margin-top:6px}
+.panel{background:#121923;border:1px solid #263646;border-radius:14px;padding:16px;margin-top:14px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{margin-top:11px}
+label{display:block;font-size:12px;color:#9cb0c2;margin-bottom:6px}input,select{width:100%;background:#0d141d;border:1px solid #304458;color:#fff;border-radius:9px;padding:10px 11px;font-size:14px}
+button{border:1px solid #36506a;background:#182536;color:#f4f8fb;border-radius:10px;padding:11px 14px;font-weight:700;cursor:pointer}
+button:hover{filter:brightness(1.12)}button:disabled{opacity:.45;cursor:not-allowed}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.open{background:#173729;border-color:#2f7253}.close{background:#4a2020;border-color:#8e4444}
+.small{font-size:12px;color:#98aabd;line-height:1.55}.status{margin-top:12px;white-space:pre-wrap;background:#0c131b;border:1px solid #263646;border-radius:10px;padding:12px;min-height:58px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
+.good{color:#63df99}.bad{color:#ff7777}.warn{color:#ffd166}.pill{display:inline-block;border:1px solid #3c536b;border-radius:999px;padding:4px 8px;font-size:11px;margin-left:5px}
+.switchline{display:flex;align-items:center;gap:9px;margin-top:12px}.switchline input{width:auto}
+.danger{border-color:#7d4e20;background:#2a1d12}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}td,th{padding:8px;border-bottom:1px solid #243444;text-align:right}td:first-child,th:first-child{text-align:left}
+@media(max-width:750px){.grid{grid-template-columns:1fr}.row,.actions{grid-template-columns:1fr}.value{font-size:20px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>SKHY / SKHYNIX Pair Trader <span class="pill">LOCAL VPS ONLY</span></h1>
+<div class="sub">Mở cặp: BUY SKHYNIXUSDT + SELL SKHYUSDT bằng MARKET batch order. Đóng cặp: đọc vị thế thật rồi gửi hai MARKET order ngược chiều. Batch order giảm độ lệch thời gian nhưng không bảo đảm hai chân fill tuyệt đối cùng một mili-giây.</div>
+
+<div class="grid">
+  <div class="card"><div class="label">PRE hiện tại</div><div class="value" id="pre">--</div></div>
+  <div class="card"><div class="label">SKHYNIX mark</div><div class="value" id="skhynix">--</div></div>
+  <div class="card"><div class="label">SKHY mark</div><div class="value" id="skhy">--</div></div>
+</div>
+
+<div class="panel">
+  <b>1. Binance API</b>
+  <div class="row">
+    <div class="field"><label>API Key</label><input id="apiKey" autocomplete="off" placeholder="Binance Futures API key"></div>
+    <div class="field"><label>Secret Key</label><input id="apiSecret" type="password" autocomplete="off" placeholder="Không gửi secret cho bất kỳ ai"></div>
+  </div>
+  <div class="switchline"><input type="checkbox" id="remember"><label for="remember" style="margin:0">Lưu API trên Chrome của VPS này</label></div>
+  <div class="small">Nên dùng API key chỉ bật Futures Trading, không bật Withdrawal, và whitelist IP VPS. Secret dùng để ký ngay trong Chrome trên VPS; server không lưu Secret.</div>
+</div>
+
+<div class="panel">
+  <b>2. Kích thước lệnh</b>
+  <div class="row">
+    <div class="field"><label>USDT mỗi chân</label><input id="notional" type="number" min="1" step="100" placeholder="Ví dụ 100000"></div>
+    <div class="field"><label>Chế độ</label>
+      <select id="mode"><option value="dry">DRY RUN — chỉ tính, không gửi lệnh</option><option value="live">LỆNH THẬT — gửi Binance</option></select>
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>Chân</th><th>Hướng</th><th>Qty dự kiến</th><th>Notional ước tính</th></tr></thead>
+    <tbody>
+      <tr><td>SKHYNIXUSDT</td><td class="good">BUY / LONG</td><td id="qHynix">--</td><td id="nHynix">--</td></tr>
+      <tr><td>SKHYUSDT</td><td class="bad">SELL / SHORT</td><td id="qHy">--</td><td id="nHy">--</td></tr>
+    </tbody>
+  </table>
+  <div class="switchline danger"><input type="checkbox" id="armed"><label for="armed" style="margin:0;color:#ffd9b3">Tôi hiểu nút LIVE sẽ đặt lệnh Futures thật bằng MARKET.</label></div>
+  <div class="actions">
+    <button class="open" id="openBtn">MỞ CẶP MARKET</button>
+    <button class="close" id="closeBtn">ĐÓNG CẶP MARKET</button>
+  </div>
+  <div class="status" id="result">Chưa có thao tác.</div>
+</div>
+
+<div class="panel">
+  <b>3. Vị thế hiện tại</b>
+  <button id="posBtn" style="margin-top:10px">ĐỌC VỊ THẾ</button>
+  <div class="status" id="positions">Chưa đọc vị thế.</div>
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+let market=null, rules={}, timeOffset=0;
+
+function fmt(n,d=3){return n==null?'--':Number(n).toLocaleString('vi-VN',{minimumFractionDigits:d,maximumFractionDigits:d})}
+function setResult(msg,cls=''){ $('result').className='status '+cls; $('result').textContent=msg; }
+
+async function syncTime(){
+  const r=await fetch('/api/trade/time',{cache:'no-store'}); const j=await r.json();
+  if(!r.ok||!j.ok) throw new Error(j.error||'Không lấy được Binance time');
+  timeOffset=Number(j.serverTime)-Date.now();
+}
+
+async function loadRules(){
+  const r=await fetch('/api/trade/exchange-info',{cache:'no-store'}); const j=await r.json();
+  if(!r.ok||!j.ok) throw new Error(j.error||'Không lấy được exchangeInfo');
+  rules={};
+  for(const s of j.symbols){
+    let f=s.filters.find(x=>x.filterType==='MARKET_LOT_SIZE') || s.filters.find(x=>x.filterType==='LOT_SIZE');
+    rules[s.symbol]={stepSize:f.stepSize,minQty:Number(f.minQty),maxQty:Number(f.maxQty),status:s.status};
+  }
+}
+
+async function loadMarket(){
+  try{
+    const r=await fetch('/api/trade/market',{cache:'no-store'}); const j=await r.json();
+    if(!r.ok||!j.ok) throw new Error(j.error||'Market API error');
+    market=j;
+    $('pre').textContent=fmt(j.premium_pct,3)+'%';
+    $('skhy').textContent=fmt(j.skhy,5);
+    $('skhynix').textContent=fmt(j.skhynix,5);
+    calcQty();
+  }catch(e){ setResult('Lỗi giá: '+e.message,'bad'); }
+}
+
+function decimals(step){
+  const s=String(step); if(!s.includes('.')) return 0;
+  return s.split('.')[1].replace(/0+$/,'').length;
+}
+function floorQty(v,rule){
+  const st=Number(rule.stepSize), d=decimals(rule.stepSize);
+  const q=Math.floor((v+1e-12)/st)*st;
+  return q.toFixed(d);
+}
+function calcQty(){
+  if(!market||!rules.SKHYUSDT||!rules.SKHYNIXUSDT) return null;
+  const n=Number($('notional').value);
+  if(!n||n<=0){$('qHynix').textContent='--';$('qHy').textContent='--';$('nHynix').textContent='--';$('nHy').textContent='--';return null}
+  const q1=floorQty(n/market.skhynix,rules.SKHYNIXUSDT);
+  const q2=floorQty(n/market.skhy,rules.SKHYUSDT);
+  $('qHynix').textContent=q1; $('qHy').textContent=q2;
+  $('nHynix').textContent=fmt(Number(q1)*market.skhynix,2)+' USDT';
+  $('nHy').textContent=fmt(Number(q2)*market.skhy,2)+' USDT';
+  return {qHynix:q1,qHy:q2};
+}
+
+async function hmacHex(secret,message){
+  if(!window.crypto||!crypto.subtle) throw new Error('Chrome/Web Crypto không khả dụng. Hãy mở bằng http://127.0.0.1:8080/trade trên Chrome VPS.');
+  const enc=new TextEncoder();
+  const key=await crypto.subtle.importKey('raw',enc.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  const sig=await crypto.subtle.sign('HMAC',key,enc.encode(message));
+  return Array.from(new Uint8Array(sig)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+function creds(){
+  const api_key=$('apiKey').value.trim(), secret=$('apiSecret').value.trim();
+  if(!api_key||!secret) throw new Error('Chưa nhập API Key / Secret Key.');
+  return {api_key,secret};
+}
+
+async function signedRequest(method,path,params={}){
+  const c=creds();
+  params.recvWindow='5000';
+  params.timestamp=String(Math.round(Date.now()+timeOffset));
+  const usp=new URLSearchParams();
+  for(const [k,v] of Object.entries(params)) usp.append(k,String(v));
+  const unsigned=usp.toString();
+  const sig=await hmacHex(c.secret,unsigned);
+  const query=unsigned+'&signature='+sig;
+  const r=await fetch('/api/trade/proxy',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({method,path,query,api_key:c.api_key})
+  });
+  const j=await r.json();
+  if(!r.ok||!j.ok){
+    const detail=j.data && j.data.msg ? j.data.msg : (j.error||JSON.stringify(j.data||j));
+    throw new Error(detail);
+  }
+  return j.data;
+}
+
+async function hedgeMode(){
+  const j=await signedRequest('GET','/fapi/v1/positionSide/dual',{});
+  return !!j.dualSidePosition;
+}
+
+async function getPositions(){
+  const data=await signedRequest('GET','/fapi/v3/positionRisk',{});
+  const rows=Array.isArray(data)?data:[data];
+  return rows.filter(x=>x.symbol==='SKHYUSDT'||x.symbol==='SKHYNIXUSDT');
+}
+
+function describePositions(rows){
+  if(!rows.length) return 'Không có vị thế SKHY/SKHYNIX đang mở.';
+  return rows.map(x=>{
+    return x.symbol+' | '+(x.positionSide||'BOTH')+' | qty '+x.positionAmt+' | entry '+x.entryPrice+' | mark '+x.markPrice+' | PnL '+x.unRealizedProfit;
+  }).join('\n');
+}
+
+async function refreshPositions(){
+  try{
+    const rows=await getPositions(); $('positions').textContent=describePositions(rows); return rows;
+  }catch(e){ $('positions').textContent='Lỗi: '+e.message; throw e; }
+}
+
+async function sendBatch(orders){
+  const batch=JSON.stringify(orders);
+  return await signedRequest('POST','/fapi/v1/batchOrders',{batchOrders:batch});
+}
+
+async function openPair(){
+  try{
+    await loadMarket();
+    const q=calcQty(); if(!q) throw new Error('Hãy nhập USDT mỗi chân.');
+    if(Number(q.qHynix)<=0||Number(q.qHy)<=0) throw new Error('Quantity không hợp lệ.');
+    const dual=await hedgeMode();
+    const orders=[
+      {symbol:'SKHYNIXUSDT',side:'BUY',type:'MARKET',quantity:q.qHynix},
+      {symbol:'SKHYUSDT',side:'SELL',type:'MARKET',quantity:q.qHy}
+    ];
+    if(dual){orders[0].positionSide='LONG';orders[1].positionSide='SHORT'}
+    const preview='PRE '+fmt(market.premium_pct,3)+'%\nBUY SKHYNIX '+q.qHynix+'\nSELL SKHY '+q.qHy+'\nMode: '+(dual?'HEDGE':'ONE-WAY');
+    if($('mode').value==='dry'){setResult('DRY RUN — KHÔNG GỬI LỆNH\n'+preview+'\n\nBatch payload:\n'+JSON.stringify(orders,null,2),'warn');return}
+    if(!$('armed').checked) throw new Error('Chưa tick xác nhận lệnh thật.');
+    if(!confirm('XÁC NHẬN MỞ CẶP MARKET THẬT?\n\n'+preview)) return;
+    setResult('Đang gửi batch MARKET...','warn');
+    const out=await sendBatch(orders);
+    setResult('ĐÃ GỬI BATCH MỞ CẶP\n'+JSON.stringify(out,null,2),'good');
+    setTimeout(refreshPositions,1200);
+  }catch(e){setResult('LỖI MỞ CẶP: '+e.message,'bad')}
+}
+
+async function closePair(){
+  try{
+    const dual=await hedgeMode();
+    const rows=await getPositions();
+    const orders=[];
+    if(dual){
+      const a=rows.find(x=>x.symbol==='SKHYNIXUSDT'&&x.positionSide==='LONG'&&Number(x.positionAmt)!==0);
+      const b=rows.find(x=>x.symbol==='SKHYUSDT'&&x.positionSide==='SHORT'&&Number(x.positionAmt)!==0);
+      if(a) orders.push({symbol:'SKHYNIXUSDT',side:'SELL',positionSide:'LONG',type:'MARKET',quantity:String(Math.abs(Number(a.positionAmt)))});
+      if(b) orders.push({symbol:'SKHYUSDT',side:'BUY',positionSide:'SHORT',type:'MARKET',quantity:String(Math.abs(Number(b.positionAmt)))});
+    }else{
+      const a=rows.find(x=>x.symbol==='SKHYNIXUSDT'&&Number(x.positionAmt)!==0);
+      const b=rows.find(x=>x.symbol==='SKHYUSDT'&&Number(x.positionAmt)!==0);
+      if(a) orders.push({symbol:'SKHYNIXUSDT',side:Number(a.positionAmt)>0?'SELL':'BUY',type:'MARKET',quantity:String(Math.abs(Number(a.positionAmt))),reduceOnly:'true'});
+      if(b) orders.push({symbol:'SKHYUSDT',side:Number(b.positionAmt)>0?'SELL':'BUY',type:'MARKET',quantity:String(Math.abs(Number(b.positionAmt))),reduceOnly:'true'});
+    }
+    if(!orders.length) throw new Error('Không tìm thấy vị thế SKHY/SKHYNIX để đóng.');
+    const preview=orders.map(o=>o.side+' '+o.symbol+' '+o.quantity+(o.positionSide?' '+o.positionSide:'')).join('\n');
+    if($('mode').value==='dry'){setResult('DRY RUN — KHÔNG GỬI LỆNH\nĐóng vị thế phát hiện được:\n'+preview+'\n\n'+JSON.stringify(orders,null,2),'warn');return}
+    if(!$('armed').checked) throw new Error('Chưa tick xác nhận lệnh thật.');
+    if(!confirm('XÁC NHẬN ĐÓNG CẶP MARKET THẬT?\n\n'+preview)) return;
+    setResult('Đang gửi batch đóng MARKET...','warn');
+    const out=await sendBatch(orders);
+    setResult('ĐÃ GỬI BATCH ĐÓNG CẶP\n'+JSON.stringify(out,null,2),'good');
+    setTimeout(refreshPositions,1200);
+  }catch(e){setResult('LỖI ĐÓNG CẶP: '+e.message,'bad')}
+}
+
+function restore(){
+  const k=localStorage.getItem('skhy_api_key'), s=localStorage.getItem('skhy_api_secret');
+  if(k&&s){$('apiKey').value=k;$('apiSecret').value=s;$('remember').checked=true}
+}
+function saveCreds(){
+  if($('remember').checked){
+    localStorage.setItem('skhy_api_key',$('apiKey').value.trim());
+    localStorage.setItem('skhy_api_secret',$('apiSecret').value.trim());
+  }else{
+    localStorage.removeItem('skhy_api_key'); localStorage.removeItem('skhy_api_secret');
+  }
+}
+
+$('notional').addEventListener('input',calcQty);
+$('apiKey').addEventListener('change',saveCreds);
+$('apiSecret').addEventListener('change',saveCreds);
+$('remember').addEventListener('change',saveCreds);
+$('openBtn').onclick=openPair; $('closeBtn').onclick=closePair; $('posBtn').onclick=refreshPositions;
+
+(async()=>{
+  restore();
+  try{await Promise.all([syncTime(),loadRules(),loadMarket()]);setInterval(loadMarket,2000)}
+  catch(e){setResult('Khởi tạo lỗi: '+e.message,'bad')}
+})();
+</script>
+</body>
+</html>
