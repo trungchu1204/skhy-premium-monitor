@@ -43,7 +43,7 @@ button.active{background:#26384c}
 <canvas id="chart" width="1200" height="460"></canvas>
 <div class="note">
 Công thức: PRE = SKHY / (SKHYNIX / 10) - 1. Trang dùng trực tiếp Binance WebSocket, không qua CoinGecko hay Google.
-Lịch sử được lưu trên trình duyệt của thiết bị này và lấy mẫu mỗi 10 giây để biểu đồ không quá nặng.
+Lịch sử được lưu trên trình duyệt của thiết bị này và lấy mẫu mỗi 5 phút để biểu đồ không quá nặng.
 </div>
 </div>
 <script>
@@ -67,7 +67,7 @@ function refresh(){
   $('skhynix').textContent=fmt(prices.SKHYNIXUSDT,5);
   if(p!=null){
     const now=Date.now();
-    if(now-lastSaved>=10000){
+    if(now-lastSaved>=300000){
       history.push({t:now,p,skhy:prices.SKHYUSDT,skhynix:prices.SKHYNIXUSDT});
       const cutoff=now-7*86400000;
       history=history.filter(x=>x.t>=cutoff).slice(-70000);
