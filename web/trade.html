@@ -3,35 +3,37 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SKHY Pair Trader v3</title>
+<title>SKHY Pair Trader v4</title>
 <style>
 :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color-scheme:dark}
-*{box-sizing:border-box}body{margin:0;background:#0b0f14;color:#eef4fa}.wrap{max-width:1080px;margin:auto;padding:22px}
+*{box-sizing:border-box}body{margin:0;background:#0b0f14;color:#eef4fa}.wrap{max-width:1180px;margin:auto;padding:22px}
 h1{font-size:25px;margin:0 0 5px}.sub{color:#9cb0c2;font-size:13px;line-height:1.55}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px 0}.card,.panel{background:#121923;border:1px solid #263646;border-radius:14px;padding:15px}
 .panel{margin-top:14px}.label{font-size:12px;color:#8ea5b8}.value{font-size:24px;font-weight:750;margin-top:6px}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{margin-top:11px}
 label{display:block;font-size:12px;color:#9cb0c2;margin-bottom:6px}input,select{width:100%;background:#0d141d;border:1px solid #304458;color:#fff;border-radius:9px;padding:10px 11px;font-size:14px}
-button{border:1px solid #36506a;background:#182536;color:#f4f8fb;border-radius:10px;padding:11px 14px;font-weight:700;cursor:pointer}
-button:hover{filter:brightness(1.12)}button:disabled{opacity:.45;cursor:not-allowed}
-.open{background:#173729;border-color:#2f7253}.close{background:#4a2020;border-color:#8e4444}.all{background:#513b12;border-color:#9a7a2c}
+button{border:1px solid #36506a;background:#182536;color:#f4f8fb;border-radius:10px;padding:10px 12px;font-weight:700;cursor:pointer}
+button:hover{filter:brightness(1.12)}button:disabled{opacity:.4;cursor:not-allowed}
+.open{background:#173729;border-color:#2f7253}.close{background:#4a2020;border-color:#8e4444}.maker{background:#19354a;border-color:#39729b}.market{background:#4a2f19;border-color:#98643a}.cancel{background:#3f2222;border-color:#704343}
 .actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
-.small{font-size:12px;color:#98aabd;line-height:1.55}.status{margin-top:12px;white-space:pre-wrap;background:#0c131b;border:1px solid #263646;border-radius:10px;padding:12px;min-height:62px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;max-height:330px;overflow:auto}
+.small{font-size:12px;color:#98aabd;line-height:1.55}.status{margin-top:12px;white-space:pre-wrap;background:#0c131b;border:1px solid #263646;border-radius:10px;padding:12px;min-height:62px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;max-height:340px;overflow:auto}
 .good{color:#63df99}.bad{color:#ff7777}.warn{color:#ffd166}.pill{display:inline-block;border:1px solid #3c536b;border-radius:999px;padding:4px 8px;font-size:11px;margin-left:5px}
 .switchline{display:flex;align-items:center;gap:9px;margin-top:12px}.switchline input{width:auto}.danger{border-color:#7d4e20;background:#2a1d12}
-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}td,th{padding:8px;border-bottom:1px solid #243444;text-align:right}td:first-child,th:first-child{text-align:left}
-@media(max-width:760px){.grid,.row,.actions{grid-template-columns:1fr}.value{font-size:20px}}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}td,th{padding:8px;border-bottom:1px solid #243444;text-align:right;vertical-align:middle}td:first-child,th:first-child{text-align:left}
+.tracker td{font-size:12px}.tracker button{font-size:11px;padding:7px 8px;margin:2px}.muted{color:#7f93a5}
+.book{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+@media(max-width:800px){.grid,.row,.actions{grid-template-columns:1fr}.value{font-size:20px}.tracker{display:block;overflow-x:auto}}
 </style>
 </head>
 <body>
 <div class="wrap">
-<h1>SKHY / SKHYNIX Pair Trader <span class="pill">V3 · MANUAL</span></h1>
-<div class="sub">Không tự chia lệnh và không tự chạy nhiều batch. Mỗi lần bạn nhập số USDT muốn giao dịch rồi bấm một lần. Bạn có thể lặp lại bao nhiêu lần tùy ý. Mỗi lần bấm, hai chân được gửi chung một MARKET batch order.</div>
+<h1>SKHY / SKHYNIX Pair Trader <span class="pill">V4 · MANUAL MAKER</span></h1>
+<div class="sub">Bạn tự quyết định từng thao tác. MARKET gửi hai chân ngay. POST ONLY đặt hai LIMIT GTX ở best bid / best ask. Nếu một chân khớp trước, giao diện chỉ theo dõi và chờ bạn chọn thủ công: <b>POST ONLY phần còn lại</b> hoặc <b>MARKET phần còn lại</b>.</div>
 
 <div class="grid">
   <div class="card"><div class="label">PRE hiện tại</div><div class="value" id="pre">--</div></div>
-  <div class="card"><div class="label">SKHYNIX mark</div><div class="value" id="skhynix">--</div></div>
-  <div class="card"><div class="label">SKHY mark</div><div class="value" id="skhy">--</div></div>
+  <div class="card"><div class="label">SKHYNIX mark</div><div class="value" id="skhynix">--</div><div class="small book" id="bookHynix">Bid -- · Ask --</div></div>
+  <div class="card"><div class="label">SKHY mark</div><div class="value" id="skhy">--</div><div class="small book" id="bookHy">Bid -- · Ask --</div></div>
 </div>
 
 <div class="panel">
@@ -45,12 +47,21 @@ table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}td,th{p
 </div>
 
 <div class="panel">
-  <b>2. Chế độ giao dịch</b>
+  <b>2. Lệnh thủ công</b>
   <div class="row">
-    <div class="field"><label>Chế độ</label>
-      <select id="mode"><option value="dry">DRY RUN — chỉ tính, không gửi lệnh</option><option value="live">LỆNH THẬT — gửi Binance</option></select>
+    <div class="field"><label>Loại lệnh</label>
+      <select id="orderType">
+        <option value="MARKET">MARKET — khớp ngay</option>
+        <option value="POST_ONLY">POST ONLY — maker GTX</option>
+      </select>
     </div>
     <div class="field"><label>USDT mỗi chân cho LẦN BẤM NÀY</label><input id="manualNotional" type="number" min="1" step="100" value="10000"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Chế độ</label>
+      <select id="mode"><option value="dry">DRY RUN — không gửi lệnh</option><option value="live">LỆNH THẬT — gửi Binance</option></select>
+    </div>
+    <div class="field"><label>Ghi chú</label><input disabled value="POST ONLY = LIMIT + GTX; nếu giá có thể khớp ngay, Binance sẽ từ chối thay vì thành taker"></div>
   </div>
 
   <table>
@@ -61,20 +72,37 @@ table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}td,th{p
     </tbody>
   </table>
 
-  <div class="small" id="planText" style="margin-top:9px">--</div>
-  <div class="switchline danger"><input type="checkbox" id="armed"><label for="armed" style="margin:0;color:#ffd9b3">Tôi hiểu LIVE sẽ đặt lệnh Futures MARKET thật.</label></div>
-
+  <div class="switchline danger"><input type="checkbox" id="armed"><label for="armed" style="margin:0;color:#ffd9b3">Tôi hiểu LIVE sẽ đặt lệnh Futures thật.</label></div>
   <div class="actions">
     <button class="open" id="openBtn">MỞ THÊM 1 CẶP</button>
     <button class="close" id="closeBtn">ĐÓNG BỚT 1 CẶP</button>
   </div>
-  <button class="all" id="closeAllBtn" style="width:100%;margin-top:10px">ĐÓNG HẾT VỊ THẾ SKHY / SKHYNIX</button>
-
   <div class="status" id="result">Chưa có thao tác.</div>
 </div>
 
 <div class="panel">
-  <b>3. Vị thế hiện tại</b>
+  <b>3. Theo dõi cặp POST ONLY gần nhất</b>
+  <div class="small">Giao diện tự đọc trạng thái khớp khoảng mỗi 1 giây nhưng <b>không tự đặt lệnh thay bạn</b>. Khi còn dư, bạn chọn hành động riêng cho từng chân.</div>
+  <div class="tracker">
+    <table>
+      <thead><tr><th>Chân</th><th>Side</th><th>Mục tiêu</th><th>Đã khớp</th><th>Còn lại</th><th>Trạng thái</th><th>Giá chờ</th><th>Thao tác phần còn lại</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>SKHYNIXUSDT</td><td id="trkHynixSide">--</td><td id="trkHynixTarget">--</td><td id="trkHynixFilled">--</td><td id="trkHynixRemain">--</td><td id="trkHynixStatus">--</td><td id="trkHynixPrice">--</td>
+          <td><button class="maker" id="hynixMakerBtn">POST ONLY</button><button class="market" id="hynixMarketBtn">MARKET</button><button class="cancel" id="hynixCancelBtn">HỦY CHỜ</button></td>
+        </tr>
+        <tr>
+          <td>SKHYUSDT</td><td id="trkHySide">--</td><td id="trkHyTarget">--</td><td id="trkHyFilled">--</td><td id="trkHyRemain">--</td><td id="trkHyStatus">--</td><td id="trkHyPrice">--</td>
+          <td><button class="maker" id="hyMakerBtn">POST ONLY</button><button class="market" id="hyMarketBtn">MARKET</button><button class="cancel" id="hyCancelBtn">HỦY CHỜ</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="small" id="trackerNote" style="margin-top:8px">Chưa có cặp Post Only đang theo dõi.</div>
+</div>
+
+<div class="panel">
+  <b>4. Vị thế hiện tại</b>
   <button id="posBtn" style="margin-top:10px">ĐỌC VỊ THẾ</button>
   <div class="status" id="positions">Chưa đọc vị thế.</div>
 </div>
@@ -82,11 +110,14 @@ table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}td,th{p
 
 <script>
 const $=id=>document.getElementById(id);
-let market=null,rules={},timeOffset=0,busy=false;
+let market=null,book=null,rules={},timeOffset=0,busy=false,pairState=null,pollBusy=false;
 
 function fmt(n,d=3){return n==null?'--':Number(n).toLocaleString('vi-VN',{minimumFractionDigits:d,maximumFractionDigits:d})}
 function setResult(msg,cls=''){ $('result').className='status '+cls; $('result').textContent=msg; }
-function lock(on){busy=on;['openBtn','closeBtn','closeAllBtn','posBtn'].forEach(id=>$(id).disabled=on)}
+function lock(on){busy=on;['openBtn','closeBtn','posBtn'].forEach(id=>$(id).disabled=on)}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+function savePair(){if(pairState)localStorage.setItem('skhy_pair_state_v4',JSON.stringify(pairState));else localStorage.removeItem('skhy_pair_state_v4')}
+function restorePair(){try{const x=localStorage.getItem('skhy_pair_state_v4');if(x)pairState=JSON.parse(x)}catch(e){pairState=null}}
 
 async function syncTime(){
   const r=await fetch('/api/trade/time',{cache:'no-store'}),j=await r.json();
@@ -98,18 +129,26 @@ async function loadRules(){
   if(!r.ok||!j.ok)throw new Error(j.error||'Không lấy được exchangeInfo');
   rules={};
   for(const s of j.symbols){
-    const f=s.filters.find(x=>x.filterType==='MARKET_LOT_SIZE')||s.filters.find(x=>x.filterType==='LOT_SIZE');
-    rules[s.symbol]={stepSize:f.stepSize,minQty:Number(f.minQty),maxQty:Number(f.maxQty)};
+    const lot=s.filters.find(x=>x.filterType==='MARKET_LOT_SIZE')||s.filters.find(x=>x.filterType==='LOT_SIZE');
+    rules[s.symbol]={stepSize:lot.stepSize,minQty:Number(lot.minQty),maxQty:Number(lot.maxQty)};
   }
+}
+async function loadBook(){
+  const r=await fetch('/api/trade/book',{cache:'no-store'}),j=await r.json();
+  if(!r.ok||!j.ok)throw new Error(j.error||'Không lấy được bookTicker');
+  book=j.book;
+  $('bookHynix').textContent='Bid '+book.SKHYNIXUSDT.bidPrice+' · Ask '+book.SKHYNIXUSDT.askPrice;
+  $('bookHy').textContent='Bid '+book.SKHYUSDT.bidPrice+' · Ask '+book.SKHYUSDT.askPrice;
+  return book;
 }
 async function loadMarket(){
   try{
-    const r=await fetch('/api/trade/market',{cache:'no-store'}),j=await r.json();
+    const [r]=await Promise.all([fetch('/api/trade/market',{cache:'no-store'}),loadBook()]);
+    const j=await r.json();
     if(!r.ok||!j.ok)throw new Error(j.error||'Market API error');
     market=j;
     $('pre').textContent=fmt(j.premium_pct,3)+'%';
-    $('skhynix').textContent=fmt(j.skhynix,5);
-    $('skhy').textContent=fmt(j.skhy,5);
+    $('skhynix').textContent=fmt(j.skhynix,5);$('skhy').textContent=fmt(j.skhy,5);
     calcPreview();
   }catch(e){if(!busy)setResult('Lỗi giá: '+e.message,'bad')}
 }
@@ -122,40 +161,40 @@ function validateQty(symbol,q){
   const n=Number(q),r=rules[symbol];
   if(!r||!Number.isFinite(n)||n<=0)throw new Error('Quantity '+symbol+' không hợp lệ.');
   if(n<r.minQty)throw new Error(symbol+' nhỏ hơn minQty '+r.minQty);
-  if(r.maxQty>0&&n>r.maxQty)throw new Error(symbol+' vượt maxQty '+r.maxQty+'. Hãy giảm USDT mỗi lần bấm.');
+  if(r.maxQty>0&&n>r.maxQty)throw new Error(symbol+' vượt maxQty '+r.maxQty);
 }
 function amount(){
   const n=Number($('manualNotional').value);
   if(!n||n<=0)throw new Error('Hãy nhập USDT mỗi chân.');
   return n;
 }
+function refPrice(symbol,side){
+  if(!book)return market?(symbol==='SKHYNIXUSDT'?market.skhynix:market.skhy):null;
+  return Number(side==='BUY'?book[symbol].bidPrice:book[symbol].askPrice);
+}
 function calcPreview(){
-  if(!market||!rules.SKHYUSDT||!rules.SKHYNIXUSDT)return null;
+  if(!market||!book||!rules.SKHYUSDT||!rules.SKHYNIXUSDT)return null;
   let n;try{n=amount()}catch(e){return null}
-  const q1=floorQty(n/market.skhynix,rules.SKHYNIXUSDT);
-  const q2=floorQty(n/market.skhy,rules.SKHYUSDT);
+  const p1=Number(book.SKHYNIXUSDT.bidPrice),p2=Number(book.SKHYUSDT.askPrice);
+  const q1=floorQty(n/p1,rules.SKHYNIXUSDT),q2=floorQty(n/p2,rules.SKHYUSDT);
   $('qHynix').textContent=q1;$('qHy').textContent=q2;
-  $('nHynix').textContent=fmt(Number(q1)*market.skhynix,2)+' USDT';
-  $('nHy').textContent=fmt(Number(q2)*market.skhy,2)+' USDT';
-  $('planText').textContent='Mỗi lần bấm sẽ giao dịch khoảng '+fmt(n,2)+' USDT ở MỖI chân. Bạn có thể đổi số này rồi bấm tiếp.';
-  return {qHynix:q1,qHy:q2,n};
+  $('nHynix').textContent=fmt(Number(q1)*p1,2)+' USDT';$('nHy').textContent=fmt(Number(q2)*p2,2)+' USDT';
+  return{qHynix:q1,qHy:q2,n};
 }
 
 async function hmacHex(secret,message){
-  const enc=new TextEncoder();
-  const key=await crypto.subtle.importKey('raw',enc.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  const enc=new TextEncoder(),key=await crypto.subtle.importKey('raw',enc.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);
   const sig=await crypto.subtle.sign('HMAC',key,enc.encode(message));
   return Array.from(new Uint8Array(sig)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 function creds(){
   const api_key=$('apiKey').value.trim(),secret=$('apiSecret').value.trim();
   if(!api_key||!secret)throw new Error('Chưa nhập API Key / Secret Key.');
-  return {api_key,secret};
+  return{api_key,secret};
 }
 async function signedRequest(method,path,params={}){
-  const c=creds();
-  params.recvWindow='5000';params.timestamp=String(Math.round(Date.now()+timeOffset));
-  const usp=new URLSearchParams();for(const[k,v]of Object.entries(params))usp.append(k,String(v));
+  const c=creds();params.recvWindow='5000';params.timestamp=String(Math.round(Date.now()+timeOffset));
+  const usp=new URLSearchParams();for(const[k,v]of Object.entries(params))if(v!==undefined&&v!==null)usp.append(k,String(v));
   const unsigned=usp.toString(),sig=await hmacHex(c.secret,unsigned);
   const r=await fetch('/api/trade/proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method,path,query:unsigned+'&signature='+sig,api_key:c.api_key})});
   const j=await r.json();
@@ -164,117 +203,216 @@ async function signedRequest(method,path,params={}){
 }
 async function hedgeMode(){const j=await signedRequest('GET','/fapi/v1/positionSide/dual',{});return!!j.dualSidePosition}
 async function getPositions(){
-  const data=await signedRequest('GET','/fapi/v3/positionRisk',{});
-  const rows=Array.isArray(data)?data:[data];
+  const data=await signedRequest('GET','/fapi/v3/positionRisk',{}),rows=Array.isArray(data)?data:[data];
   return rows.filter(x=>x.symbol==='SKHYUSDT'||x.symbol==='SKHYNIXUSDT');
+}
+function findLeg(rows,symbol,hedgeSide,dual){
+  return dual?rows.find(x=>x.symbol===symbol&&x.positionSide===hedgeSide&&Number(x.positionAmt)!==0):rows.find(x=>x.symbol===symbol&&Number(x.positionAmt)!==0);
 }
 function describePositions(rows){
   const open=rows.filter(x=>Number(x.positionAmt)!==0);
   if(!open.length)return'Không có vị thế SKHY/SKHYNIX đang mở.';
-  return open.map(x=>{
-    const notional=Math.abs(Number(x.positionAmt)*Number(x.markPrice));
-    return x.symbol+' | '+(x.positionSide||'BOTH')+' | qty '+x.positionAmt+' | ~'+fmt(notional,2)+' USDT | entry '+x.entryPrice+' | PnL '+x.unRealizedProfit;
-  }).join('\n');
+  return open.map(x=>x.symbol+' | '+(x.positionSide||'BOTH')+' | qty '+x.positionAmt+' | ~'+fmt(Math.abs(Number(x.positionAmt)*Number(x.markPrice)),2)+' USDT | entry '+x.entryPrice+' | PnL '+x.unRealizedProfit).join('\n');
 }
 async function refreshPositions(){
   try{const rows=await getPositions();$('positions').textContent=describePositions(rows);return rows}
   catch(e){$('positions').textContent='Lỗi: '+e.message;throw e}
 }
 async function sendBatch(orders){return await signedRequest('POST','/fapi/v1/batchOrders',{batchOrders:JSON.stringify(orders)})}
-function batchResult(out,expected){
-  if(!Array.isArray(out))return{ok:false,text:JSON.stringify(out,null,2)};
-  const bad=out.filter(x=>x&&typeof x.code==='number'&&x.code<0);
-  const good=out.filter(x=>x&&x.orderId);
-  return{ok:bad.length===0&&good.length===expected,text:JSON.stringify(out,null,2)};
+async function sendSingle(order){
+  const p={...order,newOrderRespType:'RESULT'};
+  return await signedRequest('POST','/fapi/v1/order',p);
 }
-function checkLive(msg){
+async function queryOrder(leg){
+  if(!leg.currentOrderId)return null;
+  return await signedRequest('GET','/fapi/v1/order',{symbol:leg.symbol,orderId:leg.currentOrderId});
+}
+async function cancelOrder(leg){
+  if(!leg.currentOrderId)return null;
+  return await signedRequest('DELETE','/fapi/v1/order',{symbol:leg.symbol,orderId:leg.currentOrderId});
+}
+function confirmLive(msg){
   if($('mode').value==='dry')return false;
   if(!$('armed').checked)throw new Error('Chưa tick xác nhận lệnh thật.');
   return confirm(msg);
 }
+function makeMarketOrder(symbol,side,qty,positionSide,reduceOnly){
+  const o={symbol,side,type:'MARKET',quantity:qty};
+  if(positionSide)o.positionSide=positionSide;
+  if(reduceOnly)o.reduceOnly=true;
+  return o;
+}
+function makePostOrder(symbol,side,qty,positionSide,reduceOnly){
+  const price=side==='BUY'?book[symbol].bidPrice:book[symbol].askPrice;
+  const o={symbol,side,type:'LIMIT',timeInForce:'GTX',quantity:qty,price};
+  if(positionSide)o.positionSide=positionSide;
+  if(reduceOnly)o.reduceOnly=true;
+  return o;
+}
+function batchSummary(out){
+  return JSON.stringify(out,null,2);
+}
+function newLeg(symbol,side,positionSide,targetQty,reduceOnly,response){
+  return{
+    symbol,side,positionSide:positionSide||null,reduceOnly:!!reduceOnly,targetQty:Number(targetQty),
+    filledBase:0,currentExecuted:0,currentOrderId:response&&response.orderId?String(response.orderId):null,
+    currentPrice:response&&response.price?String(response.price):null,
+    status:response&&response.status?response.status:(response&&response.code?'REJECTED':'NEW'),
+    lastError:response&&response.code?String(response.msg||response.code):null
+  };
+}
+function legRemaining(leg){return Math.max(0,leg.targetQty-leg.filledBase-leg.currentExecuted)}
+function legFilled(leg){return Math.min(leg.targetQty,leg.filledBase+leg.currentExecuted)}
+function qtyString(symbol,q){return floorQty(q,rules[symbol])}
+function terminal(status){return['FILLED','CANCELED','EXPIRED','EXPIRED_IN_MATCH','REJECTED'].includes(status)}
 
-async function openOne(){
-  if(busy)return;
+async function pollLeg(leg){
+  if(!leg||!leg.currentOrderId)return;
   try{
-    lock(true);await syncTime();await loadMarket();
-    const q=calcPreview();if(!q)throw new Error('Không tính được quantity.');
-    validateQty('SKHYNIXUSDT',q.qHynix);validateQty('SKHYUSDT',q.qHy);
-    const dual=await hedgeMode();
-    const orders=[
-      {symbol:'SKHYNIXUSDT',side:'BUY',type:'MARKET',quantity:q.qHynix},
-      {symbol:'SKHYUSDT',side:'SELL',type:'MARKET',quantity:q.qHy}
-    ];
-    if(dual){orders[0].positionSide='LONG';orders[1].positionSide='SHORT'}
-    const preview='PRE '+fmt(market.premium_pct,3)+'%\nBUY SKHYNIX '+q.qHynix+' (~'+fmt(Number(q.qHynix)*market.skhynix,2)+' USDT)\nSELL SKHY '+q.qHy+' (~'+fmt(Number(q.qHy)*market.skhy,2)+' USDT)';
-    if($('mode').value==='dry'){setResult('DRY RUN — KHÔNG GỬI LỆNH\n'+preview+'\n\nBạn có thể bấm nhiều lần; mỗi lần chỉ là 1 batch.','warn');return}
-    if(!checkLive('XÁC NHẬN MỞ THÊM 1 CẶP MARKET?\n\n'+preview))return;
-    setResult('Đang gửi 1 batch mở cặp...','warn');
-    const out=await sendBatch(orders),res=batchResult(out,2);
-    setResult((res.ok?'ĐÃ GỬI XONG 1 BATCH MỞ CẶP':'BATCH CÓ LỖI')+'\n'+res.text,res.ok?'good':'bad');
-    setTimeout(refreshPositions,800);
-  }catch(e){setResult('LỖI MỞ: '+e.message,'bad')}
+    const x=await queryOrder(leg);
+    leg.currentExecuted=Number(x.executedQty||0);leg.status=x.status||leg.status;leg.currentPrice=x.price||leg.currentPrice;leg.lastError=null;
+    if(terminal(leg.status)){
+      leg.filledBase=Math.min(leg.targetQty,leg.filledBase+leg.currentExecuted);
+      leg.currentExecuted=0;leg.currentOrderId=null;
+    }
+  }catch(e){leg.lastError=e.message}
+}
+async function pollPair(){
+  if(pollBusy||!pairState)return;
+  pollBusy=true;
+  try{await syncTime();await Promise.all(pairState.legs.map(pollLeg));savePair();renderTracker()}
+  catch(e){$('trackerNote').textContent='Theo dõi lỗi: '+e.message}
+  finally{pollBusy=false}
+}
+
+function renderTracker(){
+  const map={SKHYNIXUSDT:'Hynix',SKHYUSDT:'Hy'};
+  for(const sym of ['SKHYNIXUSDT','SKHYUSDT']){
+    const leg=pairState?pairState.legs.find(x=>x.symbol===sym):null,k=map[sym];
+    $( 'trk'+k+'Side').textContent=leg?leg.side:'--';
+    $( 'trk'+k+'Target').textContent=leg?qtyString(sym,leg.targetQty):'--';
+    $( 'trk'+k+'Filled').textContent=leg?qtyString(sym,legFilled(leg)):'--';
+    $( 'trk'+k+'Remain').textContent=leg?qtyString(sym,legRemaining(leg)):'--';
+    $( 'trk'+k+'Status').textContent=leg?(leg.status+(leg.lastError?' · '+leg.lastError:'')):'--';
+    $( 'trk'+k+'Price').textContent=leg?(leg.currentPrice||'--'):'--';
+    const rem=leg?legRemaining(leg):0,hasOpen=!!(leg&&leg.currentOrderId);
+    $(k.toLowerCase()+'MakerBtn').disabled=!leg||rem<=0;
+    $(k.toLowerCase()+'MarketBtn').disabled=!leg||rem<=0;
+    $(k.toLowerCase()+'CancelBtn').disabled=!hasOpen;
+  }
+  if(!pairState){$('trackerNote').textContent='Chưa có cặp Post Only đang theo dõi.';return}
+  const a=pairState.legs[0],b=pairState.legs[1];
+  const imbalance=Math.abs(legFilled(a)*(a.symbol==='SKHYNIXUSDT'?(market?market.skhynix:0):(market?market.skhy:0))-legFilled(b)*(b.symbol==='SKHYNIXUSDT'?(market?market.skhynix:0):(market?market.skhy:0)));
+  $('trackerNote').textContent=(pairState.intent==='OPEN'?'MỞ':'ĐÓNG')+' · '+new Date(pairState.createdAt).toLocaleTimeString('vi-VN')+' · Chênh notional đã khớp ước tính ~'+fmt(imbalance,2)+' USDT. Các nút thao tác chỉ chạy khi bạn tự bấm.';
+}
+
+async function cancelAndFinalize(leg){
+  if(!leg.currentOrderId)return;
+  try{
+    const x=await cancelOrder(leg);
+    leg.currentExecuted=Number(x.executedQty||leg.currentExecuted||0);
+    leg.status=x.status||'CANCELED';
+    leg.filledBase=Math.min(leg.targetQty,leg.filledBase+leg.currentExecuted);
+    leg.currentExecuted=0;leg.currentOrderId=null;leg.currentPrice=null;
+  }catch(e){
+    await pollLeg(leg);
+    if(leg.currentOrderId)throw e;
+  }
+}
+async function capCloseRemaining(leg,qty){
+  if(!pairState||pairState.intent!=='CLOSE')return qty;
+  const rows=await getPositions(),dual=pairState.dual;
+  const pos=findLeg(rows,leg.symbol,leg.positionSide,dual);
+  if(!pos)return 0;
+  return Math.min(qty,Math.abs(Number(pos.positionAmt)));
+}
+
+async function remainderAction(symbol,kind){
+  if(busy||!pairState)return;
+  const leg=pairState.legs.find(x=>x.symbol===symbol);if(!leg)return;
+  try{
+    lock(true);await syncTime();await loadBook();
+    if(leg.currentOrderId)await cancelAndFinalize(leg);
+    let rem=legRemaining(leg);rem=await capCloseRemaining(leg,rem);
+    if(rem<=0){leg.status='FILLED';savePair();renderTracker();setResult(symbol+' không còn phần dư.','good');return}
+    const q=qtyString(symbol,rem);validateQty(symbol,q);
+    if($('mode').value==='dry'){setResult('DRY RUN — '+kind+' phần còn lại '+symbol+'\nQty '+q,'warn');return}
+    const label=kind==='POST_ONLY'?'POST ONLY':'MARKET';
+    if(!confirmLive('XÁC NHẬN '+label+' PHẦN CÒN LẠI?\n'+symbol+' '+leg.side+' '+q))return;
+    if(kind==='POST_ONLY'){
+      const o=makePostOrder(symbol,leg.side,q,leg.positionSide,leg.reduceOnly),x=await sendSingle(o);
+      leg.currentOrderId=x.orderId?String(x.orderId):null;leg.currentPrice=x.price||o.price;leg.currentExecuted=Number(x.executedQty||0);leg.status=x.status||'NEW';leg.lastError=null;
+      setResult('Đã đặt lại POST ONLY phần còn lại '+symbol+' @ '+o.price+' qty '+q,'good');
+    }else{
+      const o=makeMarketOrder(symbol,leg.side,q,leg.positionSide,leg.reduceOnly),x=await sendSingle(o);
+      const ex=Number(x.executedQty||q);
+      leg.filledBase=Math.min(leg.targetQty,leg.filledBase+ex);leg.currentExecuted=0;leg.currentOrderId=null;leg.currentPrice=null;leg.status=legRemaining(leg)<=0?'FILLED':(x.status||'FILLED');leg.lastError=null;
+      setResult('Đã MARKET phần còn lại '+symbol+' qty '+q+'\n'+JSON.stringify(x,null,2),'good');
+    }
+    savePair();renderTracker();setTimeout(refreshPositions,700);
+  }catch(e){setResult('LỖI '+symbol+': '+e.message,'bad')}
   finally{lock(false)}
 }
-
-function findLeg(rows,symbol,hedgeSide,dual){
-  return dual?rows.find(x=>x.symbol===symbol&&x.positionSide===hedgeSide&&Number(x.positionAmt)!==0):rows.find(x=>x.symbol===symbol&&Number(x.positionAmt)!==0);
-}
-function closeOrder(pos,symbol,hedgeSide,qty,dual){
-  const order={symbol,type:'MARKET',quantity:qty};
-  if(dual){order.positionSide=hedgeSide;order.side=hedgeSide==='LONG'?'SELL':'BUY'}
-  else{order.side=Number(pos.positionAmt)>0?'SELL':'BUY';order.reduceOnly=true}
-  return order;
-}
-function closeQtyForNotional(pos,symbol,n,price){
-  const current=Math.abs(Number(pos.positionAmt)),r=rules[symbol];
-  let q=floorQty(n/price,r);
-  if(Number(q)>current)q=floorQty(current,r);
-  return q;
-}
-
-async function closeOne(){
-  if(busy)return;
-  try{
-    lock(true);await syncTime();await loadMarket();
-    const n=amount(),dual=await hedgeMode(),rows=await getPositions();
-    const a=findLeg(rows,'SKHYNIXUSDT','LONG',dual),b=findLeg(rows,'SKHYUSDT','SHORT',dual);
-    if(!a||!b)throw new Error('ĐÓNG BỚT yêu cầu cả hai chân đang mở. Nếu bị lệch một chân, dùng nút ĐÓNG HẾT.');
-    const q1=closeQtyForNotional(a,'SKHYNIXUSDT',n,market.skhynix);
-    const q2=closeQtyForNotional(b,'SKHYUSDT',n,market.skhy);
-    validateQty('SKHYNIXUSDT',q1);validateQty('SKHYUSDT',q2);
-    const orders=[closeOrder(a,'SKHYNIXUSDT','LONG',q1,dual),closeOrder(b,'SKHYUSDT','SHORT',q2,dual)];
-    const preview='Đóng bớt khoảng '+fmt(n,2)+' USDT/chân\nSELL SKHYNIX '+q1+'\nBUY SKHY '+q2;
-    if($('mode').value==='dry'){setResult('DRY RUN — KHÔNG GỬI LỆNH\n'+preview,'warn');return}
-    if(!checkLive('XÁC NHẬN ĐÓNG BỚT 1 CẶP MARKET?\n\n'+preview))return;
-    setResult('Đang gửi 1 batch đóng bớt...','warn');
-    const out=await sendBatch(orders),res=batchResult(out,2);
-    setResult((res.ok?'ĐÃ GỬI XONG 1 BATCH ĐÓNG BỚT':'BATCH CÓ LỖI')+'\n'+res.text,res.ok?'good':'bad');
-    setTimeout(refreshPositions,800);
-  }catch(e){setResult('LỖI ĐÓNG BỚT: '+e.message,'bad')}
-  finally{lock(false)}
-}
-
-async function closeAll(){
-  if(busy)return;
+async function cancelOnly(symbol){
+  if(busy||!pairState)return;
+  const leg=pairState.legs.find(x=>x.symbol===symbol);if(!leg||!leg.currentOrderId)return;
   try{
     lock(true);await syncTime();
-    const dual=await hedgeMode(),rows=await getPositions(),orders=[];
-    const a=findLeg(rows,'SKHYNIXUSDT','LONG',dual),b=findLeg(rows,'SKHYUSDT','SHORT',dual);
-    if(a){const q=floorQty(Math.abs(Number(a.positionAmt)),rules.SKHYNIXUSDT);validateQty('SKHYNIXUSDT',q);orders.push(closeOrder(a,'SKHYNIXUSDT','LONG',q,dual))}
-    if(b){const q=floorQty(Math.abs(Number(b.positionAmt)),rules.SKHYUSDT);validateQty('SKHYUSDT',q);orders.push(closeOrder(b,'SKHYUSDT','SHORT',q,dual))}
-    if(!orders.length)throw new Error('Không có vị thế để đóng.');
-    const preview=orders.map(o=>o.side+' '+o.symbol+' '+o.quantity).join('\n');
-    if($('mode').value==='dry'){setResult('DRY RUN — KHÔNG GỬI LỆNH\nĐÓNG HẾT:\n'+preview,'warn');return}
-    if(!checkLive('XÁC NHẬN ĐÓNG HẾT VỊ THẾ SKHY / SKHYNIX?\n\n'+preview))return;
-    setResult('Đang gửi batch đóng hết...','warn');
-    const out=await sendBatch(orders),res=batchResult(out,orders.length);
-    setResult((res.ok?'ĐÃ GỬI BATCH ĐÓNG HẾT':'BATCH CÓ LỖI')+'\n'+res.text,res.ok?'good':'bad');
-    setTimeout(refreshPositions,800);
-  }catch(e){setResult('LỖI ĐÓNG HẾT: '+e.message,'bad')}
+    if($('mode').value==='dry'){setResult('DRY RUN — sẽ hủy lệnh chờ '+symbol,'warn');return}
+    if(!confirmLive('XÁC NHẬN HỦY LỆNH CHỜ '+symbol+'?'))return;
+    await cancelAndFinalize(leg);savePair();renderTracker();setResult('Đã hủy phần đang chờ của '+symbol+'. Phần đã khớp được giữ nguyên.','good');
+  }catch(e){setResult('LỖI HỦY: '+e.message,'bad')}
   finally{lock(false)}
 }
 
-function restore(){
+async function tradePair(intent){
+  if(busy)return;
+  try{
+    lock(true);await syncTime();await loadMarket();
+    const n=amount(),dual=await hedgeMode(),post=$('orderType').value==='POST_ONLY';
+    let orders=[],q1,q2;
+    if(intent==='OPEN'){
+      const p1=post?Number(book.SKHYNIXUSDT.bidPrice):market.skhynix,p2=post?Number(book.SKHYUSDT.askPrice):market.skhy;
+      q1=floorQty(n/p1,rules.SKHYNIXUSDT);q2=floorQty(n/p2,rules.SKHYUSDT);
+      validateQty('SKHYNIXUSDT',q1);validateQty('SKHYUSDT',q2);
+      orders=[
+        post?makePostOrder('SKHYNIXUSDT','BUY',q1,dual?'LONG':null,false):makeMarketOrder('SKHYNIXUSDT','BUY',q1,dual?'LONG':null,false),
+        post?makePostOrder('SKHYUSDT','SELL',q2,dual?'SHORT':null,false):makeMarketOrder('SKHYUSDT','SELL',q2,dual?'SHORT':null,false)
+      ];
+    }else{
+      const rows=await getPositions(),a=findLeg(rows,'SKHYNIXUSDT','LONG',dual),b=findLeg(rows,'SKHYUSDT','SHORT',dual);
+      if(!a||!b)throw new Error('Đóng bớt yêu cầu cả hai chân đang mở.');
+      const p1=post?Number(book.SKHYNIXUSDT.askPrice):market.skhynix,p2=post?Number(book.SKHYUSDT.bidPrice):market.skhy;
+      q1=floorQty(Math.min(n/p1,Math.abs(Number(a.positionAmt))),rules.SKHYNIXUSDT);
+      q2=floorQty(Math.min(n/p2,Math.abs(Number(b.positionAmt))),rules.SKHYUSDT);
+      validateQty('SKHYNIXUSDT',q1);validateQty('SKHYUSDT',q2);
+      const ro=!dual;
+      orders=[
+        post?makePostOrder('SKHYNIXUSDT','SELL',q1,dual?'LONG':null,ro):makeMarketOrder('SKHYNIXUSDT','SELL',q1,dual?'LONG':null,ro),
+        post?makePostOrder('SKHYUSDT','BUY',q2,dual?'SHORT':null,ro):makeMarketOrder('SKHYUSDT','BUY',q2,dual?'SHORT':null,ro)
+      ];
+    }
+    const desc=(intent==='OPEN'?'MỞ':'ĐÓNG BỚT')+' '+($('orderType').value)+'\n'+orders.map(o=>o.side+' '+o.symbol+' '+o.quantity+(o.price?' @ '+o.price:'')).join('\n');
+    if($('mode').value==='dry'){setResult('DRY RUN — KHÔNG GỬI LỆNH\n'+desc,'warn');return}
+    if(!confirmLive('XÁC NHẬN '+desc+'?'))return;
+    const out=await sendBatch(orders);setResult('BINANCE RESPONSE\n'+batchSummary(out),'good');
+    if(post){
+      const arr=Array.isArray(out)?out:[];
+      pairState={
+        intent,dual,createdAt:Date.now(),
+        legs:[
+          newLeg('SKHYNIXUSDT',orders[0].side,orders[0].positionSide,q1,!!orders[0].reduceOnly,arr[0]),
+          newLeg('SKHYUSDT',orders[1].side,orders[1].positionSide,q2,!!orders[1].reduceOnly,arr[1])
+        ]
+      };
+      savePair();renderTracker();
+    }
+    setTimeout(refreshPositions,700);
+  }catch(e){setResult('LỖI GIAO DỊCH: '+e.message,'bad')}
+  finally{lock(false)}
+}
+
+function restoreCreds(){
   const k=localStorage.getItem('skhy_api_key'),s=localStorage.getItem('skhy_api_secret');
   if(k&&s){$('apiKey').value=k;$('apiSecret').value=s;$('remember').checked=true}
 }
@@ -282,14 +420,20 @@ function saveCreds(){
   if($('remember').checked){localStorage.setItem('skhy_api_key',$('apiKey').value.trim());localStorage.setItem('skhy_api_secret',$('apiSecret').value.trim())}
   else{localStorage.removeItem('skhy_api_key');localStorage.removeItem('skhy_api_secret')}
 }
+
 $('manualNotional').addEventListener('input',calcPreview);
 $('apiKey').addEventListener('change',saveCreds);$('apiSecret').addEventListener('change',saveCreds);$('remember').addEventListener('change',saveCreds);
-$('openBtn').onclick=openOne;$('closeBtn').onclick=closeOne;$('closeAllBtn').onclick=closeAll;$('posBtn').onclick=refreshPositions;
+$('openBtn').onclick=()=>tradePair('OPEN');$('closeBtn').onclick=()=>tradePair('CLOSE');$('posBtn').onclick=refreshPositions;
+$('hynixMakerBtn').onclick=()=>remainderAction('SKHYNIXUSDT','POST_ONLY');$('hynixMarketBtn').onclick=()=>remainderAction('SKHYNIXUSDT','MARKET');$('hynixCancelBtn').onclick=()=>cancelOnly('SKHYNIXUSDT');
+$('hyMakerBtn').onclick=()=>remainderAction('SKHYUSDT','POST_ONLY');$('hyMarketBtn').onclick=()=>remainderAction('SKHYUSDT','MARKET');$('hyCancelBtn').onclick=()=>cancelOnly('SKHYUSDT');
 
 (async()=>{
-  restore();
-  try{await Promise.all([syncTime(),loadRules(),loadMarket()]);setInterval(()=>{if(!busy)loadMarket()},2000)}
-  catch(e){setResult('Khởi tạo lỗi: '+e.message,'bad')}
+  restoreCreds();restorePair();renderTracker();
+  try{
+    await Promise.all([syncTime(),loadRules(),loadMarket()]);
+    setInterval(()=>{if(!busy)loadMarket()},2000);
+    setInterval(()=>{if(pairState)pollPair()},1000);
+  }catch(e){setResult('Khởi tạo lỗi: '+e.message,'bad')}
 })();
 </script>
 </body>
