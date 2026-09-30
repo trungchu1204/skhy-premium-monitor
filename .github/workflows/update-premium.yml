@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "5 * * * *"
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "premium.py"
+      - "requirements.txt"
+      - ".github/workflows/update-premium.yml"
 
 permissions:
   contents: write
