@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SKHY Premium Monitor</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color-scheme:dark}
+body{margin:0;background:#0b0f14;color:#eef4fa}.wrap{max-width:1150px;margin:auto;padding:20px}
+h1{font-size:24px;margin:0 0 4px}.sub,.note{color:#9cb0c2;font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px}
+.card{background:#121923;border:1px solid #263646;border-radius:14px;padding:14px}
+.label{font-size:12px;color:#8ea5b8}.value{font-size:24px;font-weight:750;margin-top:6px}
+.ok{color:#54d98c}.bad{color:#ff6b6b}.controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+button{background:#182536;border:1px solid #2e4257;color:#e9f2fa;border-radius:9px;padding:8px 12px;cursor:pointer}
+button.active{background:#2c425a}canvas{width:100%;height:480px;background:#121923;border:1px solid #263646;border-radius:14px}
+.note{margin-top:10px;line-height:1.5}
+@media(max-width:760px){.grid{grid-template-columns:1fr 1fr}.value{font-size:19px}canvas{height:380px}}
+</style>
+</head>
+<body><div class="wrap">
+<h1>SKHY / SKHYNIX Premium</h1>
+<div class="sub">VPS thu Binance Futures Mark Price mỗi 5 phút · dữ liệu dùng chung trên mọi thiết bị</div>
+<div class="grid">
+<div class="card"><div class="label">PRE hiện tại</div><div class="value" id="pre">--</div></div>
+<div class="card"><div class="label">SKHY mark</div><div class="value" id="skhy">--</div></div>
+<div class="card"><div class="label">SKHYNIX mark</div><div class="value" id="skhynix">--</div></div>
+<div class="card"><div class="label">Server</div><div class="value" id="status">Đang tải…</div></div>
+</div>
+<div class="controls">
+<button data-h="1">1h</button><button data-h="6">6h</button><button data-h="24" class="active">24h</button>
+<button data-h="168">7d</button><button data-h="720">30d</button>
+</div>
+<canvas id="chart" width="1200" height="480"></canvas>
+<div class="note" id="meta">Công thức: PRE = SKHY / (SKHYNIX / 10) - 1.</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);let hours=24;let rows=[];
+function fmt(n,d=3){return n==null?'--':Number(n).toLocaleString('vi-VN',{minimumFractionDigits:d,maximumFractionDigits:d})}
+async function loadLatest(){
+ try{
+  const r=await fetch('/api/latest',{cache:'no-store'});const j=await r.json();
+  if(!r.ok||!j.ok)throw new Error(j.error||'API error');
+  $('pre').textContent=fmt(j.premium_pct,3)+'%';$('skhy').textContent=fmt(j.skhy,5);$('skhynix').textContent=fmt(j.skhynix,5);
+  $('status').textContent='ONLINE';$('status').className='value ok';
+  $('meta').textContent='Cập nhật: '+new Date(j.ts_ms).toLocaleString('vi-VN')+' · Công thức PRE = SKHY / (SKHYNIX / 10) - 1.';
+ }catch(e){$('status').textContent='LỖI';$('status').className='value bad';$('meta').textContent='Lỗi: '+e.message}
+}
+async function loadHistory(){
+ try{const r=await fetch('/api/history?hours='+hours,{cache:'no-store'});const j=await r.json();rows=j.data||[];draw()}catch(e){}
+}
+function draw(){
+ const c=$('chart'),ctx=c.getContext('2d'),w=c.width,h=c.height;ctx.clearRect(0,0,w,h);ctx.fillStyle='#121923';ctx.fillRect(0,0,w,h);
+ if(rows.length<2){ctx.fillStyle='#8fa3b5';ctx.font='20px system-ui';ctx.fillText('Đang thu thập dữ liệu…',40,60);return}
+ const pad={l:72,r:28,t:25,b:45};const vals=rows.map(x=>x.premium_pct);let mn=Math.min(...vals),mx=Math.max(...vals);
+ const extra=Math.max((mx-mn)*.15,.15);mn-=extra;mx+=extra;const t0=rows[0].ts_ms,t1=rows[rows.length-1].ts_ms||t0+1;
+ const x=t=>pad.l+(t-t0)/(t1-t0)*(w-pad.l-pad.r);const y=v=>pad.t+(mx-v)/(mx-mn)*(h-pad.t-pad.b);
+ ctx.strokeStyle='#263445';ctx.fillStyle='#93a5b7';ctx.font='14px system-ui';ctx.lineWidth=1;
+ for(let i=0;i<=5;i++){let yy=pad.t+i*(h-pad.t-pad.b)/5;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();let v=mx-i*(mx-mn)/5;ctx.fillText(v.toFixed(2)+'%',8,yy+5)}
+ [40,41,42].forEach(v=>{if(v>=mn&&v<=mx){ctx.strokeStyle='#45586b';ctx.setLineDash([7,7]);ctx.beginPath();ctx.moveTo(pad.l,y(v));ctx.lineTo(w-pad.r,y(v));ctx.stroke();ctx.setLineDash([])}})
+ ctx.strokeStyle='#7db7ff';ctx.lineWidth=3;ctx.beginPath();rows.forEach((d,i)=>{const xx=x(d.ts_ms),yy=y(d.premium_pct);i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)});ctx.stroke();
+ ctx.fillStyle='#93a5b7';ctx.font='13px system-ui';
+ for(let i=0;i<=4;i++){const tt=t0+i*(t1-t0)/4;const d=new Date(tt);let s=d.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'});if(hours>24)s=d.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})+' '+s;ctx.fillText(s,pad.l+i*(w-pad.l-pad.r)/4-30,h-15)}
+}
+document.querySelectorAll('button[data-h]').forEach(b=>b.onclick=()=>{document.querySelectorAll('button[data-h]').forEach(x=>x.classList.remove('active'));b.classList.add('active');hours=+b.dataset.h;loadHistory()});
+loadLatest();loadHistory();setInterval(()=>{loadLatest();loadHistory()},30000);
+</script></body></html>
