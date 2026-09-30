@@ -167,6 +167,9 @@ TRADE_PROXY_ALLOW = {
     ("GET", "/fapi/v1/positionSide/dual"),
     ("GET", "/fapi/v3/positionRisk"),
     ("POST", "/fapi/v1/batchOrders"),
+    ("POST", "/fapi/v1/order"),
+    ("GET", "/fapi/v1/order"),
+    ("DELETE", "/fapi/v1/order"),
 }
 
 def _trade_local_only():
@@ -216,6 +219,37 @@ def trade_time():
             last_error = str(e)
     return jsonify({"ok": False, "error": last_error or "Unable to get Binance server time"}), 502
 
+@app.get("/api/trade/book")
+def trade_book():
+    denied = _trade_guard()
+    if denied:
+        return denied
+    last_error = None
+    for base in ["https://fapi.binance.com", "https://fapi1.binance.com", "https://fapi2.binance.com"]:
+        try:
+            r = requests.get(base + "/fapi/v1/ticker/bookTicker", timeout=10)
+            r.raise_for_status()
+            rows = r.json()
+            if not isinstance(rows, list):
+                rows = [rows]
+            by_symbol = {x.get("symbol"): x for x in rows}
+            out = {}
+            for symbol in TRADE_SYMBOLS:
+                x = by_symbol.get(symbol)
+                if not x:
+                    raise RuntimeError("Missing " + symbol + " in bookTicker")
+                out[symbol] = {
+                    "bidPrice": x.get("bidPrice"),
+                    "bidQty": x.get("bidQty"),
+                    "askPrice": x.get("askPrice"),
+                    "askQty": x.get("askQty"),
+                    "time": x.get("time"),
+                }
+            return jsonify({"ok": True, "book": out})
+        except Exception as e:
+            last_error = str(e)
+    return jsonify({"ok": False, "error": last_error or "Unable to load bookTicker"}), 502
+
 @app.get("/api/trade/exchange-info")
 def trade_exchange_info():
     denied = _trade_guard()
@@ -261,25 +295,61 @@ def trade_proxy():
     if not query or len(query) > 20000 or "signature=" not in query:
         return jsonify({"ok": False, "error": "Missing or invalid signed query."}), 400
 
-    # Only the two intended symbols may be submitted in a batch order.
-    if method == "POST" and path == "/fapi/v1/batchOrders":
-        from urllib.parse import parse_qs
-        try:
+    # Strictly limit trading to the intended two symbols and simple MARKET / post-only LIMIT orders.
+    from urllib.parse import parse_qs
+    try:
+        q = parse_qs(query, keep_blank_values=True)
+
+        def validate_order(order):
+            if order.get("symbol") not in TRADE_SYMBOLS:
+                raise ValueError("Unexpected symbol")
+            if order.get("side") not in {"BUY", "SELL"}:
+                raise ValueError("Invalid side")
+            order_type = order.get("type")
+            if order_type not in {"MARKET", "LIMIT"}:
+                raise ValueError("Only MARKET or LIMIT orders are allowed")
+            if order_type == "LIMIT":
+                if order.get("timeInForce") != "GTX":
+                    raise ValueError("LIMIT orders must use GTX (Post Only)")
+                if not order.get("price"):
+                    raise ValueError("Post Only LIMIT order requires price")
+            if order_type == "MARKET" and order.get("timeInForce"):
+                raise ValueError("MARKET order must not include timeInForce")
+            if not order.get("quantity"):
+                raise ValueError("Quantity is required")
+            if order.get("positionSide") not in {None, "BOTH", "LONG", "SHORT"}:
+                raise ValueError("Invalid positionSide")
+
+        if method == "POST" and path == "/fapi/v1/batchOrders":
             import json as _json
-            q = parse_qs(query, keep_blank_values=True)
             raw = q.get("batchOrders", [None])[0]
             orders = _json.loads(raw)
             if not isinstance(orders, list) or not (1 <= len(orders) <= 2):
                 raise ValueError("Batch must contain one or two orders")
             for order in orders:
-                if order.get("symbol") not in TRADE_SYMBOLS:
-                    raise ValueError("Unexpected symbol")
-                if order.get("type") != "MARKET":
-                    raise ValueError("Only MARKET orders are allowed")
-                if order.get("side") not in {"BUY", "SELL"}:
-                    raise ValueError("Invalid side")
-        except Exception as e:
-            return jsonify({"ok": False, "error": "Rejected batch payload: " + str(e)}), 400
+                validate_order(order)
+
+        if path == "/fapi/v1/order":
+            symbol = q.get("symbol", [None])[0]
+            if symbol not in TRADE_SYMBOLS:
+                raise ValueError("Unexpected symbol")
+            if method == "POST":
+                order = {
+                    "symbol": symbol,
+                    "side": q.get("side", [None])[0],
+                    "type": q.get("type", [None])[0],
+                    "timeInForce": q.get("timeInForce", [None])[0],
+                    "price": q.get("price", [None])[0],
+                    "quantity": q.get("quantity", [None])[0],
+                    "positionSide": q.get("positionSide", [None])[0],
+                }
+                validate_order(order)
+            else:
+                order_id = q.get("orderId", [None])[0]
+                if not order_id or not str(order_id).isdigit():
+                    raise ValueError("orderId is required")
+    except Exception as e:
+        return jsonify({"ok": False, "error": "Rejected trading request: " + str(e)}), 400
 
     headers = {"X-MBX-APIKEY": api_key, "User-Agent": "skhy-premium-monitor/1.0"}
     last_error = None
