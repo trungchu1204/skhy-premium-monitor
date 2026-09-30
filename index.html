@@ -26,7 +26,7 @@ button.active{background:#26384c}
 <body>
 <div class="wrap">
 <h1>SKHY / SKHYNIX Premium</h1>
-<div class="sub">Dữ liệu live từ Binance USDⓈ-M Futures Mark Price WebSocket</div>
+<div class="sub">Dữ liệu live từ Binance USDⓈ-M Futures Mark Price (WebSocket + REST fallback)</div>
 <div class="grid">
   <div class="card"><div class="label">PRE hiện tại</div><div class="value" id="pre">--</div></div>
   <div class="card"><div class="label">SKHY mark</div><div class="value" id="skhy">--</div></div>
@@ -42,7 +42,7 @@ button.active{background:#26384c}
 </div>
 <canvas id="chart" width="1200" height="460"></canvas>
 <div class="note">
-Công thức: PRE = SKHY / (SKHYNIX / 10) - 1. Trang dùng trực tiếp Binance WebSocket, không qua CoinGecko hay Google.
+Công thức: PRE = SKHY / (SKHYNIX / 10) - 1. Trang lấy trực tiếp Binance Futures. Ưu tiên WebSocket; nếu TradFi stream không phát hai mã này thì tự chuyển sang REST mark price. Không qua CoinGecko hay Google.
 Lịch sử được lưu trên trình duyệt của thiết bị này và lấy mẫu mỗi 5 phút để biểu đồ không quá nặng.
 </div>
 </div>
@@ -77,20 +77,43 @@ function refresh(){
   }
   draw();
 }
+async function pollRest(){
+  const urls=[
+    'https://fapi.binance.com/fapi/v1/premiumIndex',
+    'https://fapi1.binance.com/fapi/v1/premiumIndex',
+    'https://fapi2.binance.com/fapi/v1/premiumIndex',
+    'https://fapi3.binance.com/fapi/v1/premiumIndex',
+    'https://fapi4.binance.com/fapi/v1/premiumIndex'
+  ];
+  for(const url of urls){
+    try{
+      const r=await fetch(url,{cache:'no-store'});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const data=await r.json();
+      const arr=Array.isArray(data)?data:[data];
+      const a=arr.find(x=>x.symbol==='SKHYUSDT');
+      const b=arr.find(x=>x.symbol==='SKHYNIXUSDT');
+      if(a&&b){
+        prices.SKHYUSDT=parseFloat(a.markPrice);
+        prices.SKHYNIXUSDT=parseFloat(b.markPrice);
+        $('status').textContent='LIVE REST';
+        $('status').className='value ok';
+        refresh();
+        return true;
+      }
+    }catch(e){}
+  }
+  $('status').textContent='Không lấy được Binance';
+  $('status').className='value bad';
+  return false;
+}
+
 function connect(){
+  // Try WebSocket first, but TradFi symbols may not be broadcast on the standard all-market stream.
   const url='wss://fstream.binance.com/ws/!markPrice@arr@1s';
   const ws=new WebSocket(url);
   let gotData=false;
-  ws.onopen=()=>{
-    $('status').textContent='Đã nối';
-    $('status').className='value ok';
-    setTimeout(()=>{
-      if(!gotData){
-        $('status').textContent='Nối nhưng chưa có data';
-        $('status').className='value bad';
-      }
-    },5000);
-  };
+  ws.onopen=()=>{$('status').textContent='Đã nối WS';$('status').className='value ok'};
   ws.onmessage=e=>{
     try{
       const m=JSON.parse(e.data);
@@ -102,17 +125,16 @@ function connect(){
         }
       }
       if(gotData){
-        $('status').textContent='LIVE';
+        $('status').textContent='LIVE WS';
         $('status').className='value ok';
+        refresh();
       }
-      refresh();
-    }catch(err){
-      $('status').textContent='Lỗi dữ liệu';
-      $('status').className='value bad';
-    }
+    }catch(_){}
   };
-  ws.onerror=()=>{$('status').textContent='Lỗi WS';$('status').className='value bad'};
-  ws.onclose=()=>{ $('status').textContent='Nối lại…';$('status').className='value bad'; setTimeout(connect,2000); };
+  ws.onerror=()=>{};
+  ws.onclose=()=>{};
+  setTimeout(()=>{ if(!gotData) pollRest(); },2000);
+  setInterval(()=>{ if(!gotData) pollRest(); },5000);
 }
 function draw(){
  const c=$('chart'),ctx=c.getContext('2d'),w=c.width,h=c.height;
