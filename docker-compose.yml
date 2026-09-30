@@ -1,0 +1,12 @@
+services:
+  skhy-monitor:
+    build: .
+    container_name: skhy-premium-monitor
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - POLL_SECONDS=300
+      - PORT=8080
+    volumes:
+      - ./data:/app/data
