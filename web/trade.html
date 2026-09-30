@@ -201,6 +201,8 @@ async function openPair(){
     const q=calcQty(); if(!q) throw new Error('Hãy nhập USDT mỗi chân.');
     if(Number(q.qHynix)<=0||Number(q.qHy)<=0) throw new Error('Quantity không hợp lệ.');
     const dual=await hedgeMode();
+    const existing=await getPositions();
+    if(existing.some(x=>Number(x.positionAmt)!==0)) throw new Error('Đã có vị thế SKHY/SKHYNIX đang mở. Giao diện chặn mở chồng để tránh tăng size ngoài ý muốn.');
     const orders=[
       {symbol:'SKHYNIXUSDT',side:'BUY',type:'MARKET',quantity:q.qHynix},
       {symbol:'SKHYUSDT',side:'SELL',type:'MARKET',quantity:q.qHy}
@@ -230,7 +232,7 @@ async function closePair(){
     }else{
       const a=rows.find(x=>x.symbol==='SKHYNIXUSDT'&&Number(x.positionAmt)!==0);
       const b=rows.find(x=>x.symbol==='SKHYUSDT'&&Number(x.positionAmt)!==0);
-      if(a) orders.push({symbol:'SKHYNIXUSDT',side:Number(a.positionAmt)>0?'SELL':'BUY',type:'MARKET',quantity:String(Math.abs(Number(a.positionAmt))),reduceOnly:'true'});
+      if(a) orders.push({symbol:'SKHYNIXUSDT',side:Number(a.positionAmt)>0?'SELL':'BUY',type:'MARKET',quantity:String(Math.abs(Number(a.positionAmt))),reduceOnly:true});
       if(b) orders.push({symbol:'SKHYUSDT',side:Number(b.positionAmt)>0?'SELL':'BUY',type:'MARKET',quantity:String(Math.abs(Number(b.positionAmt))),reduceOnly:'true'});
     }
     if(!orders.length) throw new Error('Không tìm thấy vị thế SKHY/SKHYNIX để đóng.');
