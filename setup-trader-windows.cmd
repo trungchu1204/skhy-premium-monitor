@@ -25,6 +25,9 @@ echo [2/4] Installing requirements...
 "%PY%" -m pip install -r requirements-server.txt
 if errorlevel 1 goto :fail
 
+echo [3/4] Stopping old server on port 8080 if present...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8080 " ^| findstr "LISTENING"') do taskkill /PID %%a /F >nul 2>&1
+
 echo [3/4] Starting local server...
 start "SKHY Monitor Server" /min cmd /c "cd /d "%~dp0" && set POLL_SECONDS=300 && set PORT=8080 && "%PY%" server.py"
 
