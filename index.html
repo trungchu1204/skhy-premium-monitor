@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>SKHY Premium Monitor</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color-scheme:dark}
+body{margin:0;background:#0b0f14;color:#e8eef5}
+.wrap{max-width:1100px;margin:auto;padding:20px}
+h1{font-size:24px;margin:0 0 6px}
+.sub{color:#9fb0c0;font-size:14px;margin-bottom:18px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.card{background:#121923;border:1px solid #243140;border-radius:14px;padding:14px}
+.label{font-size:12px;color:#8fa3b5;margin-bottom:5px}
+.value{font-size:24px;font-weight:700}
+#status.ok{color:#54d98c} #status.bad{color:#ff6b6b}
+canvas{width:100%;height:460px;background:#121923;border:1px solid #243140;border-radius:14px;margin-top:14px}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+button{background:#182332;color:#dbe7f2;border:1px solid #2d4054;border-radius:9px;padding:8px 12px;cursor:pointer}
+button.active{background:#26384c}
+.note{font-size:12px;color:#8fa3b5;margin-top:10px;line-height:1.45}
+@media(max-width:760px){.grid{grid-template-columns:1fr 1fr}.value{font-size:20px}canvas{height:360px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>SKHY / SKHYNIX Premium</h1>
+<div class="sub">Dữ liệu live từ Binance USDⓈ-M Futures Mark Price WebSocket</div>
+<div class="grid">
+  <div class="card"><div class="label">PRE hiện tại</div><div class="value" id="pre">--</div></div>
+  <div class="card"><div class="label">SKHY mark</div><div class="value" id="skhy">--</div></div>
+  <div class="card"><div class="label">SKHYNIX mark</div><div class="value" id="skhynix">--</div></div>
+  <div class="card"><div class="label">Kết nối</div><div class="value" id="status">Đang nối…</div></div>
+</div>
+<div class="controls">
+<button data-window="3600000">1h</button>
+<button data-window="21600000">6h</button>
+<button data-window="86400000" class="active">24h</button>
+<button data-window="604800000">7d</button>
+<button id="clear">Xóa lịch sử cục bộ</button>
+</div>
+<canvas id="chart" width="1200" height="460"></canvas>
+<div class="note">
+Công thức: PRE = SKHY / (SKHYNIX / 10) - 1. Trang dùng trực tiếp Binance WebSocket, không qua CoinGecko hay Google.
+Lịch sử được lưu trên trình duyệt của thiết bị này và lấy mẫu mỗi 10 giây để biểu đồ không quá nặng.
+</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+let prices={SKHYUSDT:null,SKHYNIXUSDT:null};
+let viewWindow=86400000;
+const key='skhy-premium-history-v1';
+let history=[];
+try{history=JSON.parse(localStorage.getItem(key)||'[]')}catch(e){history=[]}
+let lastSaved=0;
+
+function fmt(n,d=2){return n==null?'--':Number(n).toLocaleString('vi-VN',{minimumFractionDigits:d,maximumFractionDigits:d})}
+function premium(){
+  if(prices.SKHYUSDT==null||prices.SKHYNIXUSDT==null)return null;
+  return (prices.SKHYUSDT/(prices.SKHYNIXUSDT/10)-1)*100;
+}
+function refresh(){
+  const p=premium();
+  $('pre').textContent=p==null?'--':fmt(p,3)+'%';
+  $('skhy').textContent=fmt(prices.SKHYUSDT,5);
+  $('skhynix').textContent=fmt(prices.SKHYNIXUSDT,5);
+  if(p!=null){
+    const now=Date.now();
+    if(now-lastSaved>=10000){
+      history.push({t:now,p,skhy:prices.SKHYUSDT,skhynix:prices.SKHYNIXUSDT});
+      const cutoff=now-7*86400000;
+      history=history.filter(x=>x.t>=cutoff).slice(-70000);
+      localStorage.setItem(key,JSON.stringify(history));
+      lastSaved=now;
+    }
+  }
+  draw();
+}
+function connect(){
+  const url='wss://fstream.binance.com/stream?streams=skhyusdt@markPrice@1s/skhynixusdt@markPrice@1s';
+  const ws=new WebSocket(url);
+  ws.onopen=()=>{$('status').textContent='LIVE';$('status').className='value ok'};
+  ws.onmessage=e=>{
+    try{
+      const m=JSON.parse(e.data);
+      const d=m.data||m;
+      if(d&&d.s&&d.p) prices[d.s]=parseFloat(d.p);
+      refresh();
+    }catch(_){}
+  };
+  ws.onerror=()=>{$('status').textContent='Lỗi';$('status').className='value bad'};
+  ws.onclose=()=>{ $('status').textContent='Nối lại…';$('status').className='value bad'; setTimeout(connect,2000); };
+}
+function draw(){
+ const c=$('chart'),ctx=c.getContext('2d'),w=c.width,h=c.height;
+ ctx.clearRect(0,0,w,h); ctx.fillStyle='#121923';ctx.fillRect(0,0,w,h);
+ const now=Date.now(),data=history.filter(x=>x.t>=now-viewWindow);
+ const pNow=premium(); if(pNow!=null)data.push({t:now,p:pNow});
+ if(data.length<2){ctx.fillStyle='#8fa3b5';ctx.font='20px system-ui';ctx.fillText('Đang thu thập dữ liệu…',40,60);return}
+ const pad={l:70,r:25,t:25,b:45};
+ let vals=data.map(x=>x.p); let mn=Math.min(...vals),mx=Math.max(...vals);
+ const extra=Math.max((mx-mn)*.15,.15); mn-=extra;mx+=extra;
+ const x=t=>pad.l+(t-(now-viewWindow))/viewWindow*(w-pad.l-pad.r);
+ const y=v=>pad.t+(mx-v)/(mx-mn)*(h-pad.t-pad.b);
+ ctx.strokeStyle='#263445';ctx.lineWidth=1;ctx.fillStyle='#93a5b7';ctx.font='14px system-ui';
+ for(let i=0;i<=5;i++){let yy=pad.t+i*(h-pad.t-pad.b)/5;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();let val=mx-i*(mx-mn)/5;ctx.fillText(val.toFixed(2)+'%',8,yy+5)}
+ [40,41,42].forEach(v=>{if(v>=mn&&v<=mx){ctx.strokeStyle='#45586b';ctx.setLineDash([7,7]);ctx.beginPath();ctx.moveTo(pad.l,y(v));ctx.lineTo(w-pad.r,y(v));ctx.stroke();ctx.setLineDash([])}})
+ ctx.strokeStyle='#7db7ff';ctx.lineWidth=3;ctx.beginPath();
+ data.forEach((d,i)=>{const xx=x(d.t),yy=y(d.p);i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)});ctx.stroke();
+ ctx.fillStyle='#93a5b7';ctx.font='13px system-ui';
+ for(let i=0;i<=4;i++){let tt=now-viewWindow+i*viewWindow/4;let d=new Date(tt);let s=d.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'});if(viewWindow>86400000)s=d.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})+' '+s;ctx.fillText(s,pad.l+i*(w-pad.l-pad.r)/4-28,h-15)}
+}
+document.querySelectorAll('button[data-window]').forEach(b=>b.onclick=()=>{document.querySelectorAll('button[data-window]').forEach(x=>x.classList.remove('active'));b.classList.add('active');viewWindow=+b.dataset.window;draw()});
+$('clear').onclick=()=>{if(confirm('Xóa lịch sử trên trình duyệt này?')){history=[];localStorage.removeItem(key);draw()}};
+setInterval(refresh,1000);connect();refresh();
+</script>
+</body>
+</html>
