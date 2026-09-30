@@ -159,6 +159,143 @@ def history():
 def health():
     return jsonify({"ok": True, "last_error": collector_state["last_error"]})
 
+
+# Trading UI is intentionally restricted to the VPS browser itself.
+# Open it through Remote Desktop at http://127.0.0.1:<PORT>/trade
+TRADE_SYMBOLS = {"SKHYUSDT", "SKHYNIXUSDT"}
+TRADE_PROXY_ALLOW = {
+    ("GET", "/fapi/v1/positionSide/dual"),
+    ("GET", "/fapi/v3/positionRisk"),
+    ("POST", "/fapi/v1/batchOrders"),
+}
+
+def _trade_local_only():
+    remote = request.remote_addr or ""
+    host = (request.host or "").split(":")[0].lower()
+    return remote in {"127.0.0.1", "::1"} and host in {"127.0.0.1", "localhost", "::1"}
+
+def _trade_guard():
+    if not _trade_local_only():
+        return jsonify({
+            "ok": False,
+            "error": "Trading is local-only. Open http://127.0.0.1:8080/trade inside the VPS."
+        }), 403
+    return None
+
+@app.get("/trade")
+def trade_page():
+    denied = _trade_guard()
+    if denied:
+        return denied
+    return send_from_directory(os.path.join(APP_DIR, "web"), "trade.html")
+
+@app.get("/api/trade/market")
+def trade_market():
+    denied = _trade_guard()
+    if denied:
+        return denied
+    try:
+        p = fetch_prices()
+        return jsonify({"ok": True, **p})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+
+@app.get("/api/trade/time")
+def trade_time():
+    denied = _trade_guard()
+    if denied:
+        return denied
+    last_error = None
+    for base in ["https://fapi.binance.com", "https://fapi1.binance.com", "https://fapi2.binance.com"]:
+        try:
+            r = requests.get(base + "/fapi/v1/time", timeout=10)
+            r.raise_for_status()
+            j = r.json()
+            return jsonify({"ok": True, "serverTime": int(j["serverTime"])})
+        except Exception as e:
+            last_error = str(e)
+    return jsonify({"ok": False, "error": last_error or "Unable to get Binance server time"}), 502
+
+@app.get("/api/trade/exchange-info")
+def trade_exchange_info():
+    denied = _trade_guard()
+    if denied:
+        return denied
+    last_error = None
+    for base in ["https://fapi.binance.com", "https://fapi1.binance.com", "https://fapi2.binance.com"]:
+        try:
+            r = requests.get(base + "/fapi/v1/exchangeInfo", timeout=15)
+            r.raise_for_status()
+            j = r.json()
+            symbols = []
+            for x in j.get("symbols", []):
+                if x.get("symbol") in TRADE_SYMBOLS:
+                    symbols.append({
+                        "symbol": x.get("symbol"),
+                        "status": x.get("status"),
+                        "quantityPrecision": x.get("quantityPrecision"),
+                        "filters": x.get("filters", []),
+                    })
+            if len(symbols) != 2:
+                raise RuntimeError("Could not find both SKHYUSDT and SKHYNIXUSDT in exchangeInfo")
+            return jsonify({"ok": True, "symbols": symbols})
+        except Exception as e:
+            last_error = str(e)
+    return jsonify({"ok": False, "error": last_error or "Unable to load exchangeInfo"}), 502
+
+@app.post("/api/trade/proxy")
+def trade_proxy():
+    denied = _trade_guard()
+    if denied:
+        return denied
+    body = request.get_json(silent=True) or {}
+    method = str(body.get("method", "")).upper()
+    path = str(body.get("path", ""))
+    query = str(body.get("query", ""))
+    api_key = str(body.get("api_key", "")).strip()
+
+    if (method, path) not in TRADE_PROXY_ALLOW:
+        return jsonify({"ok": False, "error": "This Binance endpoint is not allowed by the trading proxy."}), 400
+    if not api_key or len(api_key) > 256:
+        return jsonify({"ok": False, "error": "Missing or invalid API key."}), 400
+    if not query or len(query) > 20000 or "signature=" not in query:
+        return jsonify({"ok": False, "error": "Missing or invalid signed query."}), 400
+
+    # Only the two intended symbols may be submitted in a batch order.
+    if method == "POST" and path == "/fapi/v1/batchOrders":
+        from urllib.parse import parse_qs
+        try:
+            import json as _json
+            q = parse_qs(query, keep_blank_values=True)
+            raw = q.get("batchOrders", [None])[0]
+            orders = _json.loads(raw)
+            if not isinstance(orders, list) or not (1 <= len(orders) <= 2):
+                raise ValueError("Batch must contain one or two orders")
+            for order in orders:
+                if order.get("symbol") not in TRADE_SYMBOLS:
+                    raise ValueError("Unexpected symbol")
+                if order.get("type") != "MARKET":
+                    raise ValueError("Only MARKET orders are allowed")
+                if order.get("side") not in {"BUY", "SELL"}:
+                    raise ValueError("Invalid side")
+        except Exception as e:
+            return jsonify({"ok": False, "error": "Rejected batch payload: " + str(e)}), 400
+
+    headers = {"X-MBX-APIKEY": api_key, "User-Agent": "skhy-premium-monitor/1.0"}
+    last_error = None
+    for base in ["https://fapi.binance.com", "https://fapi1.binance.com", "https://fapi2.binance.com"]:
+        try:
+            url = base + path + "?" + query
+            r = requests.request(method, url, headers=headers, timeout=15)
+            try:
+                payload = r.json()
+            except Exception:
+                payload = {"raw": r.text}
+            return jsonify({"ok": r.ok, "status": r.status_code, "data": payload}), r.status_code
+        except Exception as e:
+            last_error = str(e)
+    return jsonify({"ok": False, "error": last_error or "Unable to reach Binance"}), 502
+
 if __name__ == "__main__":
     db().close()
     t = threading.Thread(target=collector, daemon=True)
