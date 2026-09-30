@@ -20,7 +20,7 @@ BINANCE_URLS = [
     "https://fapi4.binance.com/fapi/v1/premiumIndex",
 ]
 
-app = Flask(__name__, static_folder="web")
+app = Flask(__name__, static_folder=os.path.join(APP_DIR, "web"))
 
 def db():
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -104,7 +104,7 @@ def collector():
 
 @app.get("/")
 def index():
-    return send_from_directory("web", "index.html")
+    return send_from_directory(os.path.join(APP_DIR, "web"), "index.html")
 
 @app.get("/api/latest")
 def latest():
