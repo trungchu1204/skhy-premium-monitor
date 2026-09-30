@@ -78,18 +78,40 @@ function refresh(){
   draw();
 }
 function connect(){
-  const url='wss://fstream.binance.com/stream?streams=skhyusdt@markPrice@1s/skhynixusdt@markPrice@1s';
+  const url='wss://fstream.binance.com/ws/!markPrice@arr@1s';
   const ws=new WebSocket(url);
-  ws.onopen=()=>{$('status').textContent='LIVE';$('status').className='value ok'};
+  let gotData=false;
+  ws.onopen=()=>{
+    $('status').textContent='Đã nối';
+    $('status').className='value ok';
+    setTimeout(()=>{
+      if(!gotData){
+        $('status').textContent='Nối nhưng chưa có data';
+        $('status').className='value bad';
+      }
+    },5000);
+  };
   ws.onmessage=e=>{
     try{
       const m=JSON.parse(e.data);
-      const d=m.data||m;
-      if(d&&d.s&&d.p) prices[d.s]=parseFloat(d.p);
+      const arr=Array.isArray(m)?m:(Array.isArray(m.data)?m.data:[m.data||m]);
+      for(const d of arr){
+        if(d&&d.s&&(d.s==='SKHYUSDT'||d.s==='SKHYNIXUSDT')&&d.p){
+          prices[d.s]=parseFloat(d.p);
+          gotData=true;
+        }
+      }
+      if(gotData){
+        $('status').textContent='LIVE';
+        $('status').className='value ok';
+      }
       refresh();
-    }catch(_){}
+    }catch(err){
+      $('status').textContent='Lỗi dữ liệu';
+      $('status').className='value bad';
+    }
   };
-  ws.onerror=()=>{$('status').textContent='Lỗi';$('status').className='value bad'};
+  ws.onerror=()=>{$('status').textContent='Lỗi WS';$('status').className='value bad'};
   ws.onclose=()=>{ $('status').textContent='Nối lại…';$('status').className='value bad'; setTimeout(connect,2000); };
 }
 function draw(){
