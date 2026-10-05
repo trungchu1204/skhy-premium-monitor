@@ -29,6 +29,8 @@ button.active{background:#26384c}
 [hidden]{display:none!important}canvas:focus-visible{outline:2px solid #7db7ff;outline-offset:3px}
 
 .chart-wrap{position:relative;margin-top:14px}.chart-wrap canvas{display:block;margin-top:0;box-sizing:border-box}
+canvas{touch-action:pan-y;cursor:grab}canvas.dragging{cursor:grabbing}button:disabled{opacity:.45;cursor:default}
+#timeline{width:100%;accent-color:#7db7ff}#storage-status{color:#ffc978}
 </style>
 </head>
 <body>
@@ -46,22 +48,111 @@ button.active{background:#26384c}
 <button data-window="21600000">6h</button>
 <button data-window="86400000" class="active">24h</button>
 <button data-window="604800000">7d</button>
+<button data-window="2592000000">30d</button>
+<button id="all">Tất cả</button>
+<button id="live">Về hiện tại</button>
+<button id="older">Tải thêm 30 ngày từ Binance</button>
 <button id="clear">Xóa lịch sử cục bộ</button>
 </div>
-<div class="chart-wrap"><canvas id="chart" width="1200" height="460"></canvas></div><div class="note">Di chuột / chạm vào biểu đồ để xem giờ VN, PRE và giá. Dùng ← → để chọn mẫu.</div>
+<div class="chart-wrap"><canvas id="chart" width="1200" height="460"></canvas></div>
+<input id="timeline" type="range" min="0" max="1000" value="1000" aria-label="Di chuyển khoảng thời gian trên biểu đồ">
+<div class="controls"><button id="previous">← Lùi một khung</button><button id="next">Tiến một khung →</button></div>
+<div id="view-status" class="note"></div><div id="history-status" class="note" role="status"></div><div id="storage-status" class="note" role="status"></div>
+<div class="note">Giữ chuột và kéo sang phải để xem quá khứ; hoặc dùng thanh trượt. Di chuột / chạm để xem giờ VN, PRE và giá; ← → chọn mẫu. Nhấn “Tải thêm 30 ngày từ Binance” để xem xa hơn dữ liệu đang có.</div>
 <div class="note">
 Công thức: PRE = SKHY / (SKHYNIX / 10) - 1. Trang lấy trực tiếp Binance Futures. Ưu tiên WebSocket; nếu TradFi stream không phát hai mã này thì tự chuyển sang REST mark price. Không qua CoinGecko hay Google.
-Lịch sử được lưu trên trình duyệt của thiết bị này và lấy mẫu mỗi 5 phút để biểu đồ không quá nặng.
+Lịch sử được lưu trên trình duyệt này, không tự xóa sau 7 ngày. Mẫu trực tiếp chỉ được ghi khi trang đang mở. Lịch sử tải thêm dùng giá đóng nến mark 5 phút của hai mã cùng thời điểm; đây không phải bản khôi phục mẫu trực tiếp đã bị xóa. Khoảng không có dữ liệu được để trống.
 </div>
 </div>
 <script>
 const $=id=>document.getElementById(id);
 let prices={SKHYUSDT:null,SKHYNIXUSDT:null};
 let viewWindow=86400000;
+let viewEnd=null,allView=false,dragging=false;
+const STEP=300000,DAY=86400000;
 const key='skhy-premium-history-v1';
 let history=[];
 try{history=JSON.parse(localStorage.getItem(key)||'[]')}catch(e){history=[]}
-let lastSaved=0,latestPoint=null;
+history=(Array.isArray(history)?history:[]).filter(p=>Number.isFinite(p.t)&&Number.isFinite(p.p)).sort((a,b)=>a.t-b.t);
+let lastSaved=history.at(-1)?.t||0,latestPoint=null,db=null,loadingOlder=false;
+const stamp=t=>new Date(t).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',hour12:false});
+function saveRows(rows){
+ return new Promise((resolve,reject)=>{
+  if(!db){try{localStorage.setItem(key,JSON.stringify(history));resolve();}catch(e){reject(e);}return;}
+  const tx=db.transaction('samples','readwrite');const store=tx.objectStore('samples');rows.forEach(p=>store.put(p));
+  tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+ });
+}
+function storageError(){ $('storage-status').textContent='Không lưu được lịch sử trên thiết bị này. Dữ liệu mới có thể mất khi đóng trang; kiểm tra dung lượng hoặc quyền lưu trữ trình duyệt.'; }
+async function initHistory(){
+ try{
+  db=await new Promise((resolve,reject)=>{const r=indexedDB.open('skhy-premium-history',1);r.onupgradeneeded=()=>r.result.createObjectStore('samples',{keyPath:'t'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+  const saved=await new Promise((resolve,reject)=>{const r=db.transaction('samples').objectStore('samples').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+  const merged=new Map(saved.map(p=>[p.t,p]));history.forEach(p=>merged.set(p.t,p));history=[...merged.values()].sort((a,b)=>a.t-b.t);
+  await saveRows(history);
+  localStorage.removeItem(key);
+ }catch(e){storageError();}
+ lastSaved=history.filter(p=>p.source!=='kline').at(-1)?.t||0;
+ draw();connect();refresh();
+}
+function bounds(){
+ const now=Date.now();
+ if(allView)return {start:history[0]?.t||now-viewWindow,end:now};
+ return {start:(viewEnd??now)-viewWindow,end:viewEnd??now};
+}
+function setEnd(end){
+ const now=Date.now(),first=history[0]?.t||now-viewWindow;
+ allView=false;viewEnd=Math.max(Math.min(now,first+viewWindow),Math.min(now,end));
+ if(viewEnd>=now-1000)viewEnd=null;
+ draw();
+}
+function updateNavigation(start,end){
+ const now=Date.now(),first=history[0]?.t||now-viewWindow,minEnd=Math.min(now,first+viewWindow);
+ $('timeline').disabled=allView||minEnd>=now;
+ $('timeline').value=minEnd>=now?1000:Math.round((end-minEnd)/(now-minEnd)*1000);
+ $('previous').disabled=allView||end<=minEnd+1;$('next').disabled=allView||viewEnd===null;
+ $('view-status').textContent=(viewEnd===null?'Đến hiện tại: ':'Đang xem lịch sử: ')+stamp(start)+' — '+stamp(end)+(history.length?' · Dữ liệu sớm nhất: '+stamp(first):'');
+ $('live').classList.toggle('active',viewEnd===null&&!allView);$('all').classList.toggle('active',allView);
+ document.querySelectorAll('button[data-window]').forEach(b=>b.classList.toggle('active',!allView&&+b.dataset.window===viewWindow));
+}
+async function fetchKlines(symbol,start,end){
+ let lastError;
+ for(const host of ['fapi.binance.com','fapi1.binance.com','fapi2.binance.com']){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+  try{
+   const q=new URLSearchParams({symbol,interval:'5m',startTime:String(start),endTime:String(end),limit:'1000'});
+   const r=await fetch('https://'+host+'/fapi/v1/markPriceKlines?'+q,{signal:controller.signal});
+   if(!r.ok)throw new Error('Binance HTTP '+r.status);
+   const rows=await r.json();if(!Array.isArray(rows))throw new Error('Phản hồi lịch sử không hợp lệ');return rows;
+  }catch(e){lastError=e;}finally{clearTimeout(timer);}
+ }
+ throw lastError;
+}
+async function loadOlder(){
+ if(loadingOlder)return;
+ loadingOlder=true;$('older').disabled=$('clear').disabled=true;
+ const end=history.length?Math.floor(history[0].t/STEP)*STEP-1:Math.floor(Date.now()/STEP)*STEP-1;
+ const start=Math.max(0,end+1-30*DAY);let added=0;
+ try{
+  for(let until=end;until>=start;until-=1000*STEP){
+   const cursor=Math.max(start,until-1000*STEP+1);
+   $('history-status').textContent='Đang tải lịch sử từ Binance… '+Math.round((end-until)/(end-start+1)*100)+'%';
+   const [a,b]=await Promise.all([fetchKlines('SKHYUSDT',cursor,until),fetchKlines('SKHYNIXUSDT',cursor,until)]);
+   const byTime=new Map(b.map(k=>[Number(k[0]),k]));const rows=[];
+   for(const k of a){const other=byTime.get(Number(k[0]));if(!other||Number(k[6])!==Number(other[6]))continue;
+    const t=Number(k[6]),skhy=Number(k[4]),skhynix=Number(other[4]);
+    if(t<cursor||t>until||t>=Date.now()||!Number.isFinite(skhy)||!Number.isFinite(skhynix)||skhy<=0||skhynix<=0)continue;
+    rows.push({t,p:(skhy/(skhynix/10)-1)*100,skhy,skhynix,source:'kline'});
+   }
+   const merged=new Map(history.map(p=>[p.t,p]));for(const p of rows){if(!merged.has(p.t)){merged.set(p.t,p);added++;}}
+   history=[...merged.values()].sort((a,b)=>a.t-b.t);
+   await saveRows(rows).catch(storageError);draw();
+  }
+  $('history-status').textContent=added?'Đã tải thêm '+added.toLocaleString('vi-VN')+' mẫu đóng nến mark 5 phút. Kéo sang phải để xem.':'Binance không trả về dữ liệu chung của hai mã trong khoảng '+stamp(start)+' — '+stamp(end)+'.';
+  if(added){viewWindow=30*DAY;setEnd(end);}
+ }catch(e){$('history-status').textContent='Chưa tải xong lịch sử: '+e.message+'. Đã giữ '+added+' mẫu tải thành công. Bạn có thể thử lại.';}
+ finally{loadingOlder=false;$('older').disabled=$('clear').disabled=false;}
+}
 
 function fmt(n,d=2){return n==null?'--':Number(n).toLocaleString('vi-VN',{minimumFractionDigits:d,maximumFractionDigits:d})}
 function premium(){
@@ -78,9 +169,7 @@ function refresh(fromFeed=false){
     latestPoint={t:now,p,skhy:prices.SKHYUSDT,skhynix:prices.SKHYNIXUSDT};
     if(now-lastSaved>=300000){
       history.push({t:now,p,skhy:prices.SKHYUSDT,skhynix:prices.SKHYNIXUSDT});
-      const cutoff=now-7*86400000;
-      history=history.filter(x=>x.t>=cutoff).slice(-70000);
-      localStorage.setItem(key,JSON.stringify(history));
+      saveRows([history.at(-1)]).catch(storageError);
       lastSaved=now;
     }
   }
@@ -165,7 +254,7 @@ function createChartInspector(canvas, labels, accent) {
   for(const [label,value] of [['PRE',p.p.toLocaleString('en-US',{minimumFractionDigits:4,maximumFractionDigits:6})+'%'],[labels[0],number(p.a)],[labels[1],number(p.b)]]){
    const row=document.createElement('div'),name=document.createElement('span'),valueEl=document.createElement('b');name.textContent=label;valueEl.textContent=value;row.append(name,valueEl);tip.append(row);
   }
-  const note=document.createElement('small');note.textContent='Thời gian ghi nhận mẫu · Giá mark';tip.append(note);
+  const note=document.createElement('small');note.textContent=p.source==='kline'?'Đóng nến mark 5 phút · Binance':'Thời gian ghi nhận mẫu trực tiếp · Giá mark';tip.append(note);
   tip.hidden=line.hidden=dot.hidden=false;
   const sx=canvas.clientWidth/model.width,sy=canvas.clientHeight/model.height;
   const px=canvas.offsetLeft+model.x(p.t)*sx,py=canvas.offsetTop+model.y(p.p)*sy;
@@ -176,6 +265,7 @@ function createChartInspector(canvas, labels, accent) {
   tip.style.top=Math.max(0,Math.min(wrap.clientHeight-height,py-height/2))+'px';
  }
  function point(e){
+  if(dragging)return hide();
   if(!model?.rows.length)return hide();
   const rect=canvas.getBoundingClientRect(),x=(e.clientX-rect.left)*model.width/rect.width,y=(e.clientY-rect.top)*model.height/rect.height;
   if(x<model.left||x>model.right||y<model.top||y>model.bottom)return hide();
@@ -190,35 +280,65 @@ function createChartInspector(canvas, labels, accent) {
   if(e.key==='Home')i=0;else if(e.key==='End'||i<0)i=rows.length-1;else i+=e.key==='ArrowRight'?1:-1;
   show(rows[Math.max(0,Math.min(rows.length-1,i))]);
  });
- return next=>{model=next;if(selected!==null){const p=model.rows.find(p=>p.t===selected);if(p)show(p);else hide();}if(!model.rows.length)hide();};
+ return next=>{model=next;if(dragging)return hide();if(selected!==null){const p=model.rows.find(p=>p.t===selected);if(p)show(p);else hide();}if(!model.rows.length)hide();};
 }
 
 const inspectChart=createChartInspector($('chart'),['SKHY · USDT','SKHYNIX · USDT'],'#7db7ff');
 function draw(){
  const c=$('chart'),ctx=c.getContext('2d'),w=c.width,h=c.height;
  ctx.clearRect(0,0,w,h); ctx.fillStyle='#121923';ctx.fillRect(0,0,w,h);
- const now=Date.now(),data=history.filter(x=>x.t>=now-viewWindow);
- if(latestPoint&&latestPoint.t>=now-viewWindow&&(!data.length||latestPoint.t>data.at(-1).t))data.push(latestPoint);
- if(!data.length){inspectChart({rows:[]});ctx.fillStyle='#8fa3b5';ctx.font='20px system-ui';ctx.fillText('Đang thu thập dữ liệu…',40,60);return}
+ const {start,end}=bounds(),span=Math.max(STEP,end-start),data=history.filter(x=>x.t>=start&&x.t<=end);
+ updateNavigation(start,end);
+ if(latestPoint&&latestPoint.t>=start&&latestPoint.t<=end&&(!data.length||latestPoint.t>data.at(-1).t))data.push(latestPoint);
+ if(!data.length){inspectChart({rows:[]});ctx.fillStyle='#8fa3b5';ctx.font='20px system-ui';ctx.fillText('Chưa có dữ liệu trong khoảng này. Có thể tải thêm từ Binance.',40,60);return}
  const pad={l:70,r:25,t:25,b:45};
- let vals=data.map(x=>x.p); let mn=Math.min(...vals),mx=Math.max(...vals);
+ let mn=Infinity,mx=-Infinity;for(const d of data){mn=Math.min(mn,d.p);mx=Math.max(mx,d.p);}
  const extra=Math.max((mx-mn)*.15,.15); mn-=extra;mx+=extra;
- const x=t=>pad.l+(t-(now-viewWindow))/viewWindow*(w-pad.l-pad.r);
+ const x=t=>pad.l+(t-start)/span*(w-pad.l-pad.r);
  const y=v=>pad.t+(mx-v)/(mx-mn)*(h-pad.t-pad.b);
  ctx.strokeStyle='#263445';ctx.lineWidth=1;ctx.fillStyle='#93a5b7';ctx.font='14px system-ui';
  for(let i=0;i<=5;i++){let yy=pad.t+i*(h-pad.t-pad.b)/5;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();let val=mx-i*(mx-mn)/5;ctx.fillText(val.toFixed(2)+'%',8,yy+5)}
  [40,41,42].forEach(v=>{if(v>=mn&&v<=mx){ctx.strokeStyle='#45586b';ctx.setLineDash([7,7]);ctx.beginPath();ctx.moveTo(pad.l,y(v));ctx.lineTo(w-pad.r,y(v));ctx.stroke();ctx.setLineDash([])}})
  ctx.strokeStyle='#7db7ff';ctx.lineWidth=3;ctx.beginPath();
- data.forEach((d,i)=>{const xx=x(d.t),yy=y(d.p);i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)});ctx.stroke();
+ data.forEach((d,i)=>{const xx=x(d.t),yy=y(d.p);i&&d.t-data[i-1].t<=STEP*2?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)});ctx.stroke();
  if(data.length===1){ctx.beginPath();ctx.arc(x(data[0].t),y(data[0].p),4,0,Math.PI*2);ctx.fillStyle='#7db7ff';ctx.fill();}
  inspectChart({rows:data.map(d=>({...d,a:d.skhy,b:d.skhynix})),width:w,height:h,left:pad.l,right:w-pad.r,top:pad.t,bottom:h-pad.b,x,y});
  ctx.fillStyle='#93a5b7';ctx.font='13px system-ui';
- for(let i=0;i<=4;i++){let tt=now-viewWindow+i*viewWindow/4;let d=new Date(tt);let s=d.toLocaleTimeString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit'});if(viewWindow>86400000)s=d.toLocaleDateString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',day:'2-digit',month:'2-digit'})+' '+s;ctx.fillText(s,pad.l+i*(w-pad.l-pad.r)/4-28,h-15)}
+ for(let i=0;i<=4;i++){let tt=start+i*span/4;let d=new Date(tt);let s=d.toLocaleTimeString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit'});if(span>=86400000)s=d.toLocaleDateString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',day:'2-digit',month:'2-digit'})+' '+s;ctx.textAlign=i===0?'left':i===4?'right':'center';ctx.fillText(s,pad.l+i*(w-pad.l-pad.r)/4,h-15)}ctx.textAlign='left';
 }
-document.querySelectorAll('button[data-window]').forEach(b=>b.onclick=()=>{document.querySelectorAll('button[data-window]').forEach(x=>x.classList.remove('active'));b.classList.add('active');viewWindow=+b.dataset.window;draw()});
-$('clear').onclick=()=>{if(confirm('Xóa lịch sử trên trình duyệt này?')){history=[];localStorage.removeItem(key);draw()}};
-window.addEventListener('resize',draw);setInterval(refresh,1000);connect();refresh();
+document.querySelectorAll('button[data-window]').forEach(b=>b.onclick=()=>{allView=false;viewWindow=+b.dataset.window;if(viewEnd!==null)setEnd(viewEnd);else draw();});
+$('all').onclick=()=>{allView=true;viewEnd=null;draw();};
+$('live').onclick=()=>{allView=false;viewEnd=null;draw();};
+$('older').onclick=loadOlder;
+$('previous').onclick=()=>setEnd((viewEnd??Date.now())-viewWindow);
+$('next').onclick=()=>setEnd((viewEnd??Date.now())+viewWindow);
+$('timeline').oninput=e=>{const now=Date.now(),minEnd=Math.min(now,(history[0]?.t||now-viewWindow)+viewWindow);setEnd(minEnd+(now-minEnd)*Number(e.target.value)/1000);};
+let drag=null;
+const canvas=$('chart');
+canvas.addEventListener('pointerdown',e=>{
+ if(e.button!==0||allView||!history.length)return;
+ const rect=canvas.getBoundingClientRect(),px=(e.clientX-rect.left)*canvas.width/rect.width;
+ if(px<70||px>canvas.width-25)return;
+ drag={id:e.pointerId,x:e.clientX,end:viewEnd??Date.now(),width:rect.width*(canvas.width-95)/canvas.width};
+ canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove',e=>{
+ if(!drag||drag.id!==e.pointerId)return;
+ const delta=e.clientX-drag.x;if(!dragging&&Math.abs(delta)<4)return;
+ dragging=true;canvas.classList.add('dragging');
+ canvas.parentElement.querySelectorAll('.chart-tooltip,.chart-crosshair,.chart-point').forEach(el=>el.hidden=true);
+ setEnd(drag.end-delta/drag.width*viewWindow);
+});
+function stopDrag(e){if(!drag||drag.id!==e.pointerId)return;if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);drag=null;dragging=false;canvas.classList.remove('dragging');}
+canvas.addEventListener('pointerup',stopDrag);canvas.addEventListener('pointercancel',stopDrag);canvas.addEventListener('lostpointercapture',stopDrag);
+$('clear').onclick=async()=>{
+ if(!confirm('Xóa toàn bộ lịch sử trên trình duyệt này?'))return;
+ try{
+  if(db)await new Promise((resolve,reject)=>{const tx=db.transaction('samples','readwrite');tx.objectStore('samples').clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
+  localStorage.removeItem(key);history=[];lastSaved=0;viewEnd=null;allView=false;$('history-status').textContent='Đã xóa lịch sử cục bộ.';draw();
+ }catch(e){storageError();}
+};
+window.addEventListener('resize',draw);setInterval(refresh,1000);initHistory();
 </script>
 </body>
 </html>
-
